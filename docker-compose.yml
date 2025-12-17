@@ -1,0 +1,15 @@
+services:
+  dgt-checker:
+    build: .
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OFFICE_IDS=491,627,536,586,588,628,539
+      - CHECK_PERIOD_MINUTES=5
+      - NTFY_URL=https://ntfy.mydomain.com
+      - NTFY_TOPIC=dgt
+      - NTFY_TOKEN=tk_abc123
+    # Or use an .env file:
+    # env_file:
+    #   - .env
+    restart: unless-stopped
+
