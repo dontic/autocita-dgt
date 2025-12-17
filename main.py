@@ -3,6 +3,7 @@ import sys
 import time
 import nodriver as uc
 from dotenv import load_dotenv
+import requests
 
 from dgt_availability_checker import dgt_availability_checker
 
@@ -45,6 +46,20 @@ async def run_checker():
     print(f"📋 Offices to check: {office_ids}")
     print(f"⏱️  Check period: {check_period_minutes} minutes")
     print()
+
+    # Send a NTFY message to test the connection
+    print("🔍 Sending NTFY message to test the connection...")
+    requests.post(
+        f"{os.getenv('NTFY_URL')}/{os.getenv('NTFY_TOPIC')}",
+        data="Initializing DGT availability checker",
+        headers={
+            "Title": "Initializing DGT availability checker",
+            "Priority": "default",
+            "Tags": "dgt,info",
+            "Authorization": f"Bearer {os.getenv('NTFY_TOKEN')}",
+        },
+    )
+    print("✅ NTFY message sent")
 
     while True:
         try:
