@@ -15,5 +15,9 @@ services:
     # Or use an .env file:
     # env_file:
     #   - .env
+    # ---------
+    # Map the screenshots directory to the host
+    volumes:
+      - ./screenshots:/app/screenshots
     restart: unless-stopped
 
