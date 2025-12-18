@@ -393,6 +393,9 @@ async def office_availability_checker(browser, office_id: str):
 
     log.info("✅ This office is currently with capacity to schedule an appointment")
 
+    # Take a screenshot of the page
+    screenshot_filename = await save_screenshot(page, "availability_checked")
+
     # -------------------------- Send NTFY notification -------------------------- #
     log.info("🔍 Sending NTFY notification...")
 
@@ -411,7 +414,21 @@ async def office_availability_checker(browser, office_id: str):
         },
     )
 
+    with open(f"{screenshot_filename}", "rb") as screenshot_file:
+        requests.put(
+            f"{NTFY_URL}/{NTFY_TOPIC}",
+            data=screenshot_file,
+            headers={
+                "Filename": "screenshot.png",
+                "Content-Type": "image/png",
+                "Authorization": f"Bearer {NTFY_TOKEN}",
+            },
+        )
+
     log.info("✅ NTFY notification sent")
+
+    # Comment the following line if you want to continue with the booking process
+    return True
 
     # ---------------------- Select the first available date --------------------- #
     log.info("🔍 Selecting the first available date...")
