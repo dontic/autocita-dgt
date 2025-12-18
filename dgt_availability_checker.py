@@ -1,3 +1,4 @@
+from datetime import datetime
 import time
 import nodriver as uc
 import random
@@ -17,18 +18,30 @@ load_dotenv()
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
 logging.basicConfig(
-    level=logging.DEBUG if DEBUG else logging.INFO,
+    level=logging.WARNING,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
-log = logging.getLogger(__name__)
+
+# Create app-specific logger
+log = logging.getLogger("autocita-dgt")
+log.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 
 NTFY_URL = os.getenv("NTFY_URL")
 NTFY_TOPIC = os.getenv("NTFY_TOPIC")
 NTFY_TOKEN = os.getenv("NTFY_TOKEN")
 
+FORM_FIRST_NAME = os.getenv("FORM_FIRST_NAME")
+FORM_LAST_NAME = os.getenv("FORM_LAST_NAME")
+FORM_DNI = os.getenv("FORM_DNI")
+FORM_EMAIL = os.getenv("FORM_EMAIL")
+
 if not NTFY_URL or not NTFY_TOPIC or not NTFY_TOKEN:
     log.error("❌ NTFY_URL, NTFY_TOPIC or NTFY_TOKEN is not set")
+    sys.exit(1)
+
+if not FORM_FIRST_NAME or not FORM_LAST_NAME or not FORM_DNI or not FORM_EMAIL:
+    log.error("❌ FORM_FIRST_NAME, FORM_LAST_NAME, FORM_DNI or FORM_EMAIL is not set")
     sys.exit(1)
 
 
@@ -74,6 +87,16 @@ async def wait_until_page_is_ready(page, complete=True):
             """,
             await_promise=True,
         )
+
+
+async def save_debug_screenshot(page, step: str):
+    if DEBUG:
+        log.debug("🔍 Saving a screenshot of the page...")
+        await page.save_screenshot(
+            filename=f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{step}.png",
+            full_page=True,
+        )
+        log.debug("✅ Screenshot saved")
 
 
 # ---------------------------------------------------------------------------- #
@@ -183,6 +206,9 @@ async def office_availability_checker(browser, office_id: str):
 
     wait_random_time(1, 3)
 
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "tramite_selected")
+
     # --------------------- Check for schedule complete alert -------------------- #
     log.info("🔍 Checking if the schedule for this office is complete...")
 
@@ -198,6 +224,9 @@ async def office_availability_checker(browser, office_id: str):
     log.info("✅ There might be availability for this office")
 
     wait_random_time(1, 3)
+
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "schedule_complete_alert_checked")
 
     # ------------------------------ Select area ------------------------------ #
     log.info("🔍 Selecting the area...")
@@ -240,7 +269,7 @@ async def office_availability_checker(browser, office_id: str):
             break
 
     if not option_found:
-        log.warning(
+        log.debug(
             "⚠️ No option found with the text 'matriculación', looking for 'vehículos'..."
         )
         for option in all_options:
@@ -253,7 +282,7 @@ async def office_availability_checker(browser, office_id: str):
                 break
 
     if not option_found:
-        log.warning(
+        log.debug(
             "⚠️ No option found with the text 'matriculación' or 'vehículos', looking for 'Tramites generales'..."
         )
         for option in all_options:
@@ -267,11 +296,14 @@ async def office_availability_checker(browser, office_id: str):
 
     if not option_found:
         log.error(
-            "❌ No option found with the text 'matriculación', 'vehículos' or 'Tramites generales'"
+            "❌ No area option found with the text 'matriculación', 'vehículos' or 'Tramites generales', exiting..."
         )
         return False
 
     wait_random_time(1, 3)
+
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "area_selected")
 
     # --------------------------------- Continue --------------------------------- #
     log.info("🔍 Continuing to the next step...")
@@ -291,6 +323,9 @@ async def office_availability_checker(browser, office_id: str):
     # Wait for the page to be ready
     log.debug("🌐 Waiting for the page to be ready...")
     await wait_until_page_is_ready(page, complete=True)
+
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "continue_button_clicked")
 
     # -------------------------- Select cita presencial -------------------------- #
     log.info("🔍 Selecting the cita presencial...")
@@ -312,13 +347,31 @@ async def office_availability_checker(browser, office_id: str):
     # Wait for the page to be ready
     await wait_until_page_is_ready(page, complete=True)
 
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "presence_link_clicked")
+
     # ------------------------- Checking for availability ------------------------ #
     log.info("🔍 Checking for availability...")
 
-    # Check if there is a popup saying "...Selecciona otra oficina."
-    log.debug("🔍 Looking for the popup saying 'Selecciona otra oficina.'...")
-    popup = await page.find("Selecciona otra oficina.", best_match=True)
-    if popup:
+    # Check if the "no capacity" dialog is visible
+    # The text is always in the HTML, but the dialog is hidden when there IS availability
+    # We need to check BOTH: dialog is visible (aria-hidden="false") AND contains the specific message
+    log.debug("🔍 Checking if the 'no capacity' dialog is visible...")
+    is_no_capacity = await page.evaluate(
+        """
+        (() => {
+            const dialogs = document.querySelectorAll('div.ui-confirm-dialog[aria-hidden="false"]');
+            for (const dialog of dialogs) {
+                if (dialog.textContent.includes('sin capacidad de citación') || 
+                    dialog.textContent.includes('Selecciona otra oficina')) {
+                    return true;
+                }
+            }
+            return false;
+        })()
+        """
+    )
+    if is_no_capacity:
         log.error(
             "❌ This office is currently without capacity to schedule an appointment"
         )
@@ -330,16 +383,214 @@ async def office_availability_checker(browser, office_id: str):
     log.info("🔍 Sending NTFY notification...")
 
     notification_text = (
-        f"❕Office {office_name} is available for scheduling an appointment"
+        f"{office_name} has availability, trying to book an appointment..."
     )
 
     requests.post(
         f"{NTFY_URL}/{NTFY_TOPIC}",
         data=notification_text.encode(encoding="utf-8"),
         headers={
-            "Title": f"Office {office_name} is available for scheduling an appointment",
+            "Title": f"{office_name} has availability",
             "Priority": "default",
-            "Tags": "dgt,new",
+            "Tags": "calendar",
+            "Authorization": f"Bearer {NTFY_TOKEN}",
+        },
+    )
+
+    log.info("✅ NTFY notification sent")
+
+    # ---------------------- Select the first available date --------------------- #
+    log.info("🔍 Selecting the first available date...")
+
+    # Get all the <input> elements that have an id that starts with "formcita..." and are of type "submit"
+    log.debug(
+        "🔍 Getting all the <input> elements that have an id that starts with 'formcita:j_id_3j' and are of type 'submit'..."
+    )
+    submit_inputs = await page.query_selector_all(
+        "input[id^='formcita:j_id_3j'][type='submit']"
+    )
+
+    if not submit_inputs:
+        log.error("❌ No available dates found")
+        return False
+
+    # Get the first available date
+    first_available_date = submit_inputs[0]
+    log.debug(f"🔍 First available date: {first_available_date.value}")
+
+    # Scroll into view
+    log.debug("🖱️ Scrolling into view...")
+    await first_available_date.scroll_into_view()
+
+    wait_random_time(1, 3)
+
+    # Click on the first available date
+    log.debug("🖱️ Clicking on the first available date...")
+    await first_available_date.click()
+
+    wait_random_time(2, 4)
+
+    # Wait for the page to be ready
+    await wait_until_page_is_ready(page, complete=True)
+
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "dates_selected")
+
+    # -------------------------- Select the first available time --------------------- #
+    log.info("🔍 Selecting the first available time...")
+
+    # Get all the <input> elements that start with "formcita:j_id_40:"
+    log.debug(
+        "🔍 Getting all the <input> elements that start with 'formcita:j_id_40:'..."
+    )
+    time_inputs = await page.query_selector_all("input[id^='formcita:j_id_40:']")
+
+    if not time_inputs:
+        log.error("❌ No available times found")
+        return False
+
+    # Get the first available time
+    first_available_time = time_inputs[0]
+    log.debug(f"🔍 First available time: {first_available_time.text}")
+
+    # Click on the first available time
+    log.debug("🖱️ Clicking on the first available time...")
+    await first_available_time.click()
+
+    wait_random_time(1, 3)
+
+    # Wait for the page to be ready
+    await wait_until_page_is_ready(page, complete=True)
+
+    log.info(f"✅ Selected the first available time {first_available_time.text}")
+
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "time_selected")
+
+    # ----------------------------- Fill out the form ---------------------------- #
+    log.info("🔍 Filling out the form...")
+
+    # Click and focus on the <input> with id "formulario:nombre"
+    log.debug("🔍 Clicking and focusing on the <input> with id 'formulario:nombre'...")
+    name_input = await page.find("input[id='formulario:nombre']")
+    await name_input.click()
+    await name_input.focus()
+
+    # Write the name
+    log.debug("🔍 Writing the name...")
+    await name_input.send_keys(FORM_FIRST_NAME)
+
+    # Click and focus on the <input> with id "formulario:apellido1"
+    log.debug(
+        "🔍 Clicking and focusing on the <input> with id 'formulario:apellido1'..."
+    )
+    last_name_input = await page.find("input[id='formulario:apellido1']")
+    await last_name_input.click()
+    await last_name_input.focus()
+
+    wait_random_time(1, 2)
+
+    # Write the last name
+    log.debug("🔍 Writing the last name...")
+    await last_name_input.send_keys(FORM_LAST_NAME)
+
+    # Click and focus on the <input> with id "formulario:nif"
+    log.debug("🔍 Clicking and focusing on the <input> with id 'formulario:nif'...")
+    dni_input = await page.find("input[id='formulario:nif']")
+    await dni_input.click()
+    await dni_input.focus()
+
+    wait_random_time(1, 2)
+
+    # Write the DNI
+    log.debug("🔍 Writing the DNI...")
+    await dni_input.send_keys(FORM_DNI)
+
+    # Click and focus on the <input> with id "formulario:email"
+    log.debug("🔍 Clicking and focusing on the <input> with id 'formulario:email'...")
+    email_input = await page.find("input[id='formulario:email']")
+    await email_input.click()
+    await email_input.focus()
+
+    wait_random_time(1, 2)
+
+    # Write the email
+    log.debug("🔍 Writing the email...")
+    await email_input.send_keys(FORM_EMAIL)
+
+    wait_random_time(1, 2)
+
+    # Find the conditions <input> with id "formulario:terminosYCondiciones"
+    log.debug(
+        "🔍 Looking for the conditions <input> with id 'formulario:terminosYCondiciones'..."
+    )
+    conditions_input = await page.find("input[id='formulario:terminosYCondiciones']")
+    await conditions_input.scroll_into_view()
+
+    wait_random_time(1, 2)
+
+    # Click on the conditions
+    log.debug("🖱️ Clicking on the conditions...")
+    await conditions_input.click()
+
+    wait_random_time(1, 2)
+
+    # Save a screenshot of the page on debug mode
+    await save_debug_screenshot(page, "form_filled")
+
+    # Click the <button> with id "formulario:enviarFormulario"
+    log.debug("🔍 Looking for the <button> with id 'formulario:enviarFormulario'...")
+    send_button = await page.find("button[id='formulario:enviarFormulario']")
+    await send_button.click()
+
+    wait_random_time(1, 3)
+
+    # Wait for the page to be ready
+    await wait_until_page_is_ready(page, complete=True)
+
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "send_button_clicked")
+
+    # --------------------- Check if there is an error dialog -------------------- #
+    log.info("🔍 Checking if there is an error dialog...")
+
+    # Check if there is a text <p> with the text "Error grave"
+    error_text = await page.find("Error grave", best_match=True)
+    if error_text:
+        log.error("❌ There is an error dialog")
+        # -------------------------- Send NTFY notification -------------------------- #
+        log.info("🔍 Sending NTFY notification...")
+
+        notification_text = f"Could not book appointment for {office_name}"
+
+        requests.post(
+            f"{NTFY_URL}/{NTFY_TOPIC}",
+            data=notification_text.encode(encoding="utf-8"),
+            headers={
+                "Title": f"Error",
+                "Priority": "default",
+                "Tags": "warning",
+                "Authorization": f"Bearer {NTFY_TOKEN}",
+            },
+        )
+
+        log.info("✅ NTFY notification sent")
+        return False
+
+    log.info("✅ No error dialog found")
+
+    # -------------------------- Send NTFY notification -------------------------- #
+    log.info("🔍 Sending NTFY notification...")
+
+    notification_text = f"Congrats!"
+
+    requests.post(
+        f"{NTFY_URL}/{NTFY_TOPIC}",
+        data=notification_text.encode(encoding="utf-8"),
+        headers={
+            "Title": f"Appointment booked successfully for {office_name}",
+            "Priority": "default",
+            "Tags": "white_check_mark",
             "Authorization": f"Bearer {NTFY_TOKEN}",
         },
     )
@@ -372,7 +623,7 @@ async def main():
     # Alcala de Henares - 627
     # Madrid - 536
 
-    offices = [586, 588, 628, 539]
+    offices = [543]
 
     await dgt_availability_checker(offices)
 

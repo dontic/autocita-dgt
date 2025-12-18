@@ -68,3 +68,5 @@ logs/
 # nodriver browser data
 browser_data/
 
+# Screenshots
+screenshots/
