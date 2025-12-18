@@ -1,1 +1,72 @@
 # autocita-dgt
+
+## List of offices and IDs
+
+- 542 - Jefatura Provincial de Tráfico de A Coruña
+- 538 - Jefatura Provincial de Tráfico de Álava
+- 543 - Jefatura Provincial de Tráfico de Albacete
+- 627 - Oficina Local de Tráfico de Alcalá de Henares
+- 491 - Oficina Local de Tráfico de Alcorcón
+- 565 - Jefatura Provincial de Tráfico de Alicante
+- 84 - Jefatura Provincial de Tráfico de Almería
+- 625 - Oficina Local de Tráfico de Alzira
+- 527 - Jefatura Provincial de Tráfico de Asturias
+- 586 - Jefatura Provincial de Tráfico de Ávila
+- 590 - Jefatura Provincial de Tráfico de Badajoz
+- 489 - Jefatura Provincial de Tráfico de Baleares
+- 545 - Jefatura Provincial de Tráfico de Barcelona
+- 547 - Jefatura Provincial de Tráfico de Bizkaia
+- 532 - Jefatura Provincial de Tráfico de Burgos
+- 591 - Jefatura Provincial de Tráfico de Cáceres
+- 606 - Jefatura Provincial de Tráfico de Cádiz
+- 485 - Jefatura Provincial de Tráfico de Cantabria
+- 526 - Oficina Local de Tráfico de Cartagena
+- 525 - Jefatura Provincial de Tráfico de Castellón
+- 405 - Jefatura Local de Tráfico de Ceuta
+- 505 - Jefatura Provincial de Tráfico de Ciudad Real
+- 391 - Jefatura Provincial de Tráfico de Córdoba
+- 540 - Jefatura Provincial de Tráfico de Cuenca
+- 607 - Oficina Local de Tráfico de Elche
+- 389 - Oficina Local de Tráfico de Fuerteventura
+- 528 - Oficina Local de Tráfico de Gijón
+- 535 - Jefatura Provincial de Tráfico de Gipuzkoa
+- 530 - Jefatura Provincial de Tráfico de Girona
+- 388 - Jefatura Provincial de Tráfico de Granada
+- 588 - Jefatura Provincial de Tráfico de Guadalajara
+- 492 - Jefatura Provincial de Tráfico de Huelva
+- 537 - Jefatura Provincial de Tráfico de Huesca
+- 510 - Oficina local de Tráfico de Ibiza
+- 488 - Jefatura Provincial de Tráfico de Jaén
+- 446 - Oficina Local de Tráfico de La Línea
+- 629 - Oficina Local de Tráfico de La Palma
+- 487 - Jefatura Provincial de Tráfico de La Rioja
+- 605 - Oficina Local de Tráfico de Lanzarote
+- 534 - Jefatura Provincial de Tráfico de Las Palmas
+- 507 - Jefatura Provincial de Tráfico de León
+- 541 - Jefatura Provincial de Tráfico de Lleida
+- 508 - Jefatura Provincial de Tráfico de Lugo
+- 536 - Jefatura Provincial de Tráfico de Madrid
+- 365 - Jefatura Provincial de Tráfico de Málaga
+- 387 - Jefatura Local de Tráfico de Melilla
+- 390 - Oficina Local de Tráfico de Menorca
+- 486 - Jefatura Provincial de Tráfico de Murcia
+- 626 - Jefatura Provincial de Tráfico de Navarra
+- 392 - Jefatura Provincial de Tráfico de Ourense
+- 566 - Jefatura Provincial de Tráfico de Palencia
+- 509 - Jefatura Provincial de Tráfico de Pontevedra
+- 490 - Jefatura Provincial de Tráfico de S.C de Tenerife
+- 546 - Oficina Local de Tráfico de Sabadell
+- 589 - Jefatura Provincial de Tráfico de Salamanca
+- 445 - Oficina Local de Tráfico de Santiago de Compostela
+- 628 - Jefatura Provincial de Tráfico de Segovia
+- 345 - Jefatura Provincial de Tráfico de Sevilla
+- 529 - Jefatura Provincial de Tráfico de Soria
+- 425 - Oficina Local de Tráfico de Talavera
+- 533 - Jefatura Provincial de Tráfico de Tarragona
+- 465 - Jefatura Provincial de Tráfico de Teruel
+- 539 - Jefatura Provincial de Tráfico de Toledo
+- 587 - Jefatura Provincial de Tráfico de Valencia
+- 585 - Jefatura Provincial de Tráfico de Valladolid
+- 531 - Oficina Local de Tráfico de Vigo (selected)
+- 385 - Jefatura Provincial de Tráfico de Zamora
+- 506 - Jefatura Provincial de Tráfico de Zaragoza
