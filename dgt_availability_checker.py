@@ -253,7 +253,22 @@ async def office_availability_checker(browser, office_id: str):
                 break
 
     if not option_found:
-        log.error("❌ No option found with the text 'matriculación' or 'vehículos'")
+        log.warning(
+            "⚠️ No option found with the text 'matriculación' or 'vehículos', looking for 'Tramites generales'..."
+        )
+        for option in all_options:
+            option_text = option.text
+            if "generales" in option_text.lower():
+                log.debug("🖱️ Selecting the option...")
+                await option.select_option()
+                option_found = True
+                log.info(f"✅ Selected area: {option_text}")
+                break
+
+    if not option_found:
+        log.error(
+            "❌ No option found with the text 'matriculación', 'vehículos' or 'Tramites generales'"
+        )
         return False
 
     wait_random_time(1, 3)
