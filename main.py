@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import logging
 import nodriver as uc
 from dotenv import load_dotenv
 import requests
@@ -9,17 +10,19 @@ from dgt_availability_checker import dgt_availability_checker
 
 load_dotenv()
 
+log = logging.getLogger(__name__)
+
 
 def get_office_ids():
     """Get the office IDs from environment variable."""
     office_ids = os.getenv("OFFICE_IDS")
     if not office_ids:
-        print("❌ OFFICE_IDS environment variable is not set")
+        log.error("❌ OFFICE_IDS environment variable is not set")
         sys.exit(1)
     try:
         return [int(id.strip()) for id in office_ids.split(",")]
     except ValueError:
-        print(f"❌ OFFICE_IDS must be comma-separated integers, got: {office_ids}")
+        log.error(f"❌ OFFICE_IDS must be comma-separated integers, got: {office_ids}")
         sys.exit(1)
 
 
@@ -27,12 +30,12 @@ def get_check_period_minutes():
     """Get the check period from environment variable."""
     period = os.getenv("CHECK_PERIOD_MINUTES")
     if not period:
-        print("❌ CHECK_PERIOD_MINUTES environment variable is not set")
+        log.error("❌ CHECK_PERIOD_MINUTES environment variable is not set")
         sys.exit(1)
     try:
         return int(period)
     except ValueError:
-        print(f"❌ CHECK_PERIOD_MINUTES must be a valid integer, got: {period}")
+        log.error(f"❌ CHECK_PERIOD_MINUTES must be a valid integer, got: {period}")
         sys.exit(1)
 
 
@@ -42,13 +45,12 @@ async def run_checker():
     check_period_minutes = get_check_period_minutes()
     check_period_seconds = check_period_minutes * 60
 
-    print(f"🚀 Starting DGT availability checker")
-    print(f"📋 Offices to check: {office_ids}")
-    print(f"⏱️  Check period: {check_period_minutes} minutes")
-    print()
+    log.info("🚀 Starting DGT availability checker")
+    log.info(f"📋 Offices to check: {office_ids}")
+    log.info(f"⏱️  Check period: {check_period_minutes} minutes")
 
     # Send a NTFY message to test the connection
-    print("🔍 Sending NTFY message to test the connection...")
+    log.info("🔍 Sending NTFY message to test the connection...")
     requests.post(
         f"{os.getenv('NTFY_URL')}/{os.getenv('NTFY_TOPIC')}",
         data="Initializing DGT availability checker",
@@ -59,20 +61,20 @@ async def run_checker():
             "Authorization": f"Bearer {os.getenv('NTFY_TOKEN')}",
         },
     )
-    print("✅ NTFY message sent")
+    log.info("✅ NTFY message sent")
 
     while True:
         try:
             start_time = time.time()
-            print(f"🔄 Running availability check...")
+            log.info("🔄 Running availability check...")
             await dgt_availability_checker(office_ids)
             elapsed_time = time.time() - start_time
-            print(
+            log.info(
                 f"✅ Check completed in {elapsed_time:.2f} seconds. Next check in {check_period_minutes} minutes."
             )
         except Exception as e:
-            print(f"❌ Error during check: {e}")
-            print(f"⏳ Retrying in {check_period_minutes} minutes...")
+            log.error(f"❌ Error during check: {e}")
+            log.info(f"⏳ Retrying in {check_period_minutes} minutes...")
 
         time.sleep(check_period_seconds)
 
