@@ -7,6 +7,11 @@ import os
 import logging
 from dotenv import load_dotenv
 
+
+# ---------------------------------------------------------------------------- #
+#                       Logging and environment variables                      #
+# ---------------------------------------------------------------------------- #
+
 load_dotenv()
 
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
@@ -27,6 +32,9 @@ if not NTFY_URL or not NTFY_TOPIC or not NTFY_TOKEN:
     sys.exit(1)
 
 
+# ---------------------------------------------------------------------------- #
+#                                     Utils                                    #
+# ---------------------------------------------------------------------------- #
 def wait_random_time(min_seconds, max_seconds):
     time.sleep(random.uniform(min_seconds, max_seconds))
 
@@ -68,10 +76,14 @@ async def wait_until_page_is_ready(page, complete=True):
         )
 
 
+# ---------------------------------------------------------------------------- #
+#                                Main Functions                                #
+# ---------------------------------------------------------------------------- #
 async def office_availability_checker(browser, office_id: str):
 
     log.info(f"🔍 Checking availability for office {office_id}...")
 
+    # --------------------------------- Open site -------------------------------- #
     log.info("🌐 Opening the entry URL...")
     page = await browser.get(
         "https://sedeclave.dgt.gob.es/WEB_CITE_CONSULTA/paginas/inicio.faces"
@@ -79,13 +91,16 @@ async def office_availability_checker(browser, office_id: str):
 
     # Wait for the page to be ready
     # Use "interactive" instead of "complete" if you don't want to wait for all resources to be loaded
-    log.info("🌐 Waiting for the page to be ready...")
+    log.debug("🌐 Waiting for the page to be ready...")
     await wait_until_page_is_ready(page, complete=True)
 
     wait_random_time(1, 3)
 
+    # ------------------------------- Select office ------------------------------ #
+    log.info("🔍 Selecting the office...")
+
     # Find the select element with id "formselectorCentro:j_id_2h"
-    log.info("🔍 Finding the office select field...")
+    log.debug("🔍 Finding the office select field...")
     office_select = await page.select("select[id='formselectorCentro:j_id_2h']")
 
     if not office_select:
@@ -95,19 +110,19 @@ async def office_availability_checker(browser, office_id: str):
     wait_random_time(1, 3)
 
     # Scroll into view
-    log.info("🖱️ Scrolling into view...")
+    log.debug("🖱️ Scrolling into view...")
     await office_select.scroll_into_view()
 
     wait_random_time(1, 3)
 
     # Focus on the select field
-    log.info("🖱️ Focusing on the select field...")
+    log.debug("🖱️ Focusing on the select field...")
     await office_select.focus()
 
     wait_random_time(1, 3)
 
     # Get the option
-    log.info(f"🔍 Getting the option with value '{office_id}'...")
+    log.debug(f"🔍 Getting the option with value '{office_id}'...")
     option_to_select = await page.select(f"option[value='{office_id}']")
 
     if not option_to_select:
@@ -115,20 +130,24 @@ async def office_availability_checker(browser, office_id: str):
         return False
 
     # Get the office name and save it to a variable
-    log.info("🔍 Getting the office name...")
+    log.debug("🔍 Getting the office name...")
     office_name = option_to_select.text
-    log.info(f"✅ Office name: {office_name}")
 
     wait_random_time(1, 3)
 
     # Select that option
-    log.info("🖱️ Selecting the option...")
+    log.debug("🖱️ Selecting the option...")
     await option_to_select.select_option()
+
+    log.info(f"✅ Selected office: {office_name}")
 
     wait_random_time(1, 3)
 
+    # ------------------------------ Select tramite ------------------------------ #
+    log.info("🔍 Selecting the tramite...")
+
     # Select "Tipo de tramite"
-    log.info("🔍 Looking for the tramite select field...")
+    log.debug("🔍 Looking for the tramite select field...")
     tramite_select = await page.select(
         "select[id='formselectorCentro:idTipoTramiteSelector']"
     )
@@ -139,21 +158,22 @@ async def office_availability_checker(browser, office_id: str):
         wait_random_time(1, 3)
 
         # Focus on the select field
-        log.info("🖱️ Focusing on the tramite select field...")
+        log.debug("🖱️ Focusing on the tramite select field...")
         await tramite_select.focus()
 
         # Get all the options under the tramite select field
-        log.info("🔍 Getting all the options under the tramite select field...")
+        log.debug("🔍 Getting all the options under the tramite select field...")
         all_options = await tramite_select.query_selector_all("option")
 
         wait_random_time(1, 3)
 
-        log.info("🔍 Looking for the option that contains the text 'oficina'...")
+        log.debug("🔍 Looking for the option that contains the text 'oficina'...")
         for option in all_options:
             option_text = option.text
             if "oficina" in option_text.lower():
-                log.info("🖱️ Selecting the option...")
+                log.debug("🖱️ Selecting the option...")
                 await option.select_option()
+                log.info(f"✅ Selected tramite: {option_text}")
                 break
 
     else:
@@ -163,8 +183,10 @@ async def office_availability_checker(browser, office_id: str):
 
     wait_random_time(1, 3)
 
-    # Check if there is a message saying "El horario de atencion al cliente esta completo..."
+    # --------------------- Check for schedule complete alert -------------------- #
     log.info("🔍 Checking if the schedule for this office is complete...")
+
+    # Check if there is a message saying "El horario de atencion al cliente esta completo..."
     complete_text = await page.find(
         "El horario de atencion al cliente esta completo", best_match=True
     )
@@ -173,12 +195,15 @@ async def office_availability_checker(browser, office_id: str):
         log.error("❌ The schedule for this office is complete")
         return False
 
-    log.info("✅ There is availability for this office")
+    log.info("✅ There might be availability for this office")
 
     wait_random_time(1, 3)
 
+    # ------------------------------ Select area ------------------------------ #
+    log.info("🔍 Selecting the area...")
+
     # Look for the select with id "formselectorCentro:idAreaSelector"
-    log.info("🔍 Looking for the area select field...")
+    log.debug("🔍 Looking for the area select field...")
     area_select = await page.select("select[id='formselectorCentro:idAreaSelector']")
 
     if not area_select:
@@ -188,13 +213,13 @@ async def office_availability_checker(browser, office_id: str):
     wait_random_time(1, 3)
 
     # Focus on the select field
-    log.info("🖱️ Focusing on the area select field...")
+    log.debug("🖱️ Focusing on the area select field...")
     await area_select.focus()
 
     wait_random_time(1, 3)
 
     # Get all the options under the area select field
-    log.info("🔍 Getting all the options under the area select field...")
+    log.debug("🔍 Getting all the options under the area select field...")
     all_options = await area_select.query_selector_all("option")
 
     wait_random_time(1, 3)
@@ -208,9 +233,10 @@ async def office_availability_checker(browser, office_id: str):
     for option in all_options:
         option_text = option.text
         if "matriculación" in option_text.lower():
-            log.info("🖱️ Selecting the option...")
+            log.debug("🖱️ Selecting the option...")
             await option.select_option()
             option_found = True
+            log.info(f"✅ Selected area: {option_text}")
             break
 
     if not option_found:
@@ -220,9 +246,10 @@ async def office_availability_checker(browser, office_id: str):
         for option in all_options:
             option_text = option.text
             if "vehículos" in option_text.lower():
-                log.info("🖱️ Selecting the option...")
+                log.debug("🖱️ Selecting the option...")
                 await option.select_option()
                 option_found = True
+                log.info(f"✅ Selected area: {option_text}")
                 break
 
     if not option_found:
@@ -231,30 +258,36 @@ async def office_availability_checker(browser, office_id: str):
 
     wait_random_time(1, 3)
 
+    # --------------------------------- Continue --------------------------------- #
+    log.info("🔍 Continuing to the next step...")
+
     # Find the button with id "formselectorCentro:j_id_2x"
-    log.info("🔍 Looking for the continue button...")
+    log.debug("🔍 Looking for the continue button...")
     button = await page.find("button[id='formselectorCentro:j_id_2x']")
 
     wait_random_time(1, 3)
 
     # Click the button
-    log.info("🖱️ Clicking the continue button...")
+    log.debug("🖱️ Clicking the continue button...")
     await button.click()
 
     wait_random_time(1, 3)
 
     # Wait for the page to be ready
-    log.info("🌐 Waiting for the page to be ready...")
+    log.debug("🌐 Waiting for the page to be ready...")
     await wait_until_page_is_ready(page, complete=True)
 
+    # -------------------------- Select cita presencial -------------------------- #
+    log.info("🔍 Selecting the cita presencial...")
+
     # Wait for the <a> element with the attribbute title="presencial"
-    log.info("🔍 Looking for the <a> element with the attribute title='Presencial'...")
+    log.debug("🔍 Looking for the <a> element with the attribute title='Presencial'...")
     presence_link = await page.select("a[title='Presencial']")
 
     wait_random_time(1, 3)
 
     # Click the link
-    log.info("🖱️ Clicking the 'Pedir cita' link...")
+    log.debug("🖱️ Clicking the 'Pedir cita' link...")
     await presence_link.click()
 
     wait_random_time(1, 3)
@@ -262,8 +295,11 @@ async def office_availability_checker(browser, office_id: str):
     # Wait for the page to be ready
     await wait_until_page_is_ready(page, complete=True)
 
+    # ------------------------- Checking for availability ------------------------ #
+    log.info("🔍 Checking for availability...")
+
     # Check if there is a popup saying "...Selecciona otra oficina."
-    log.info("🔍 Looking for the popup saying 'Selecciona otra oficina.'...")
+    log.debug("🔍 Looking for the popup saying 'Selecciona otra oficina.'...")
     popup = await page.find("Selecciona otra oficina.", best_match=True)
     if popup:
         log.error(
@@ -272,6 +308,9 @@ async def office_availability_checker(browser, office_id: str):
         return False
 
     log.info("✅ This office is currently with capacity to schedule an appointment")
+
+    # -------------------------- Send NTFY notification -------------------------- #
+    log.info("🔍 Sending NTFY notification...")
 
     notification_text = (
         f"❕Office {office_name} is available for scheduling an appointment"
@@ -287,6 +326,8 @@ async def office_availability_checker(browser, office_id: str):
             "Authorization": f"Bearer {NTFY_TOKEN}",
         },
     )
+
+    log.info("✅ NTFY notification sent")
 
     return True
 
