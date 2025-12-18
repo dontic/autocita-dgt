@@ -559,9 +559,6 @@ async def office_availability_checker(browser, office_id: str):
     # Wait for the page to be ready
     await wait_until_page_is_ready(page, complete=True)
 
-    # Save a screenshot on debug mode
-    await save_debug_screenshot(page, "send_button_clicked")
-
     # --------------------- Check if there is an error dialog -------------------- #
     log.info("🔍 Checking if there is an error dialog...")
 
@@ -582,11 +579,11 @@ async def office_availability_checker(browser, office_id: str):
     log.info("🔍 Sending NTFY notification...")
 
     if error_dialog:
-        notification_title = f"Could not book appointment for {office_name}"
-        notification_body = f""
+        notification_title = f"Could not book appointment"
+        notification_body = f"Could not book appointment for {office_name}"
     else:
-        notification_title = f"Booked appointment for {office_name}!"
-        notification_body = f""
+        notification_title = f"Appointment booked!"
+        notification_body = f"Appointment booked for {office_name}"
 
     requests.post(
         f"{NTFY_URL}/{NTFY_TOPIC}",
@@ -599,15 +596,16 @@ async def office_availability_checker(browser, office_id: str):
         },
     )
 
-    requests.put(
-        f"{NTFY_URL}/{NTFY_TOPIC}",
-        data=open(screenshot_filename, "rb"),
-        headers={
-            "Filename": "screenshot.png",
-        },
-    )
-
-    log.info("✅ NTFY notification sent")
+    with open(f"{screenshot_filename}", "rb") as screenshot_file:
+        requests.put(
+            f"{NTFY_URL}/{NTFY_TOPIC}",
+            data=screenshot_file,
+            headers={
+                "Filename": "screenshot.png",
+                "Content-Type": "image/png",
+                "Authorization": f"Bearer {NTFY_TOKEN}",
+            },
+        )
 
     return True
 
