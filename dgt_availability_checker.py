@@ -299,6 +299,8 @@ async def office_availability_checker(browser, office_id: str):
     log.debug("🔍 Looking for the <a> element with the attribute title='Presencial'...")
     presence_link = await page.select("a[title='Presencial']")
 
+    # TODO: Check if there are multiple <a> elements with the attribute title="Presencial" and select the one that relates to "Tramites de vehículos"
+
     wait_random_time(1, 3)
 
     # Click the link
