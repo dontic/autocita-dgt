@@ -339,11 +339,14 @@ async def office_availability_checker(browser, office_id: str):
     await save_debug_screenshot(page, "continue_button_clicked")
 
     # -------------------------- Select cita presencial -------------------------- #
-    log.info("🔍 Selecting the cita presencial...")
+    log.info("🔍 Selecting cita presencial...")
 
-    # Wait for the <a> element with the attribbute title="presencial"
+    # Wait for the <a> element with the attribbute title="Presencial"
     log.debug("🔍 Looking for the <a> element with the attribute title='Presencial'...")
     presence_link = await page.select("a[title='Presencial']")
+    if not presence_link:
+        log.error("❌ No <a> element with the attribute title='Presencial' found")
+        return False
 
     # TODO: Check if there are multiple <a> elements with the attribute title="Presencial" and select the one that relates to "Tramites de vehículos"
 
