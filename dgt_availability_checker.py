@@ -9,8 +9,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if DEBUG else logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
