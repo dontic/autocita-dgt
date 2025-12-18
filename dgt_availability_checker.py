@@ -91,12 +91,23 @@ async def wait_until_page_is_ready(page, complete=True):
 
 async def save_debug_screenshot(page, step: str):
     if DEBUG:
-        log.debug("🔍 Saving a screenshot of the page...")
-        await page.save_screenshot(
+        log.debug("🔍 Saving a debug screenshot of the page...")
+        filename = await page.save_screenshot(
             filename=f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{step}.png",
             full_page=True,
         )
-        log.debug("✅ Screenshot saved")
+        log.debug("✅ Debug screenshot saved")
+        return filename
+
+
+async def save_screenshot(page, step: str):
+    log.debug("🔍 Saving a screenshot of the page...")
+    filename = await page.save_screenshot(
+        filename=f"screenshots/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{step}.png",
+        full_page=True,
+    )
+    log.debug("✅ Screenshot saved")
+    return filename
 
 
 # ---------------------------------------------------------------------------- #
@@ -554,44 +565,45 @@ async def office_availability_checker(browser, office_id: str):
     # --------------------- Check if there is an error dialog -------------------- #
     log.info("🔍 Checking if there is an error dialog...")
 
+    error_dialog = False
+
     # Check if there is a text <p> with the text "Error grave"
     error_text = await page.find("Error grave", best_match=True)
     if error_text:
         log.error("❌ There is an error dialog")
-        # -------------------------- Send NTFY notification -------------------------- #
-        log.info("🔍 Sending NTFY notification...")
+        error_dialog = True
+    else:
+        log.info("✅ No error dialog found")
 
-        notification_text = f"Could not book appointment for {office_name}"
-
-        requests.post(
-            f"{NTFY_URL}/{NTFY_TOPIC}",
-            data=notification_text.encode(encoding="utf-8"),
-            headers={
-                "Title": f"Error",
-                "Priority": "default",
-                "Tags": "warning",
-                "Authorization": f"Bearer {NTFY_TOKEN}",
-            },
-        )
-
-        log.info("✅ NTFY notification sent")
-        return False
-
-    log.info("✅ No error dialog found")
+    # Save a screenshot of the page
+    screenshot_filename = await save_screenshot(page, "no_error_dialog_found")
 
     # -------------------------- Send NTFY notification -------------------------- #
     log.info("🔍 Sending NTFY notification...")
 
-    notification_text = f"Congrats!"
+    if error_dialog:
+        notification_title = f"Could not book appointment for {office_name}"
+        notification_body = f""
+    else:
+        notification_title = f"Booked appointment for {office_name}!"
+        notification_body = f""
 
     requests.post(
         f"{NTFY_URL}/{NTFY_TOPIC}",
-        data=notification_text.encode(encoding="utf-8"),
+        data=notification_body.encode(encoding="utf-8"),
         headers={
-            "Title": f"Appointment booked successfully for {office_name}",
+            "Title": notification_title,
             "Priority": "default",
             "Tags": "white_check_mark",
             "Authorization": f"Bearer {NTFY_TOKEN}",
+        },
+    )
+
+    requests.put(
+        f"{NTFY_URL}/{NTFY_TOPIC}",
+        data=open(screenshot_filename, "rb"),
+        headers={
+            "Filename": "screenshot.png",
         },
     )
 
