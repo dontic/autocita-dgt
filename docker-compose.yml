@@ -1,5 +1,5 @@
 services:
-  dgt-checker:
+  autocita-dgt:
     build: .
     environment:
       - PYTHONUNBUFFERED=1
@@ -8,16 +8,5 @@ services:
       - NTFY_URL=https://ntfy.mydomain.com
       - NTFY_TOPIC=dgt
       - NTFY_TOKEN=tk_abc123
-      - FORM_FIRST_NAME=John
-      - FORM_LAST_NAME=Doe
-      - FORM_DNI=1234567A
-      - FORM_EMAIL=example@mail.com
-    # Or use an .env file:
-    # env_file:
-    #   - .env
-    # ---------
-    # Map the screenshots directory to the host
-    volumes:
-      - ./screenshots:/app/screenshots
     restart: unless-stopped
 
