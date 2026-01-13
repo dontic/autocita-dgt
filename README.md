@@ -12,6 +12,8 @@ When a free slot is found, a notification is sent to a NTFY server.
 
 3. `docker compose up -d`
 
+4. To stop the tool: `docker compose down`
+
 ## List of DGT offices and their IDs
 
 - 542 - Jefatura Provincial de Tráfico de A Coruña
