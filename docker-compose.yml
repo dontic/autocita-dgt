@@ -1,11 +1,32 @@
+# AutoCita DGT - Docker Compose Configuration
+# This service monitors the Spanish Traffic Agency (DGT) website for available
+# appointment slots and sends notifications via NTFY when slots are found.
+
 services:
   autocita-dgt:
-    build: .
+    # Docker image from Docker Hub (built via GitHub Actions on release)
+    image: dontic/autocita-dgt:latest
     environment:
-      - OFFICE_IDS=491,627,536,586,588,628,539
-      - CHECK_PERIOD_MINUTES=5
-      - NTFY_URL=https://ntfy.mydomain.com
-      - NTFY_TOPIC=dgt
-      - NTFY_TOKEN=tk_abc123
-    restart: unless-stopped
+      # OFFICE_IDS: Comma-separated list of DGT office IDs to monitor.
+      # See the README.md for the full list of available office IDs.
+      # Example below monitors Madrid region offices:
+      #   491 - Oficina Local de Tráfico de Alcorcón
+      #   627 - Oficina Local de Tráfico de Alcalá de Henares
+      #   536 - Jefatura Provincial de Tráfico de Madrid
+      - OFFICE_IDS=491,627,536
 
+      # CHECK_PERIOD_MINUTES: How often (in minutes) to check for available slots.
+      - CHECK_PERIOD_MINUTES=10
+
+      # NTFY_URL: Base URL of your NTFY notification server.
+      - NTFY_URL=https://ntfy.mydomain.com
+
+      # NTFY_TOPIC: The topic name where notifications will be published.
+      - NTFY_TOPIC=dgt
+
+      # NTFY_TOKEN: Authentication token for the NTFY server.
+      # Generate this from your NTFY server's admin panel.
+      - NTFY_TOKEN=tk_abc123
+
+    # Automatically restart the container unless explicitly stopped.
+    restart: unless-stopped
