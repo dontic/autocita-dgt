@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
+DEBUG = os.getenv("DEBUG", "False") == "True"
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -649,8 +649,6 @@ async def dgt_availability_checker(officeIds: list[str]):
 
 
 async def main():
-    # Alcorcon - 491
-    # Alcala de Henares - 627
     # Madrid - 536
 
     offices = [543]
