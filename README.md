@@ -1,6 +1,18 @@
-# autocita-dgt
+# AutoCita DGT
 
-## List of offices and IDs
+This is a self hosted tool that checks the Spanish Traffic Agency (DGT) appointment site for free slots for licensing vehicles.
+
+When a free slot is found, a notification is sent to a NTFY server.
+
+## How to self host
+
+1. Copy the `docker-compose.yml` file in the root of this repository
+
+2. Change the environment variables.
+
+3. `docker compose up -d`
+
+## List of DGT offices and their IDs
 
 - 542 - Jefatura Provincial de Tráfico de A Coruña
 - 538 - Jefatura Provincial de Tráfico de Álava
