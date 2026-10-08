@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from difflib import SequenceMatcher
 import asyncio
 import nodriver as uc
@@ -8,6 +8,15 @@ import os
 import unicodedata
 import logging
 from dotenv import load_dotenv
+
+from settings import (
+    Booking,
+    DateRange,
+    Settings,
+    load_booking,
+    load_settings,
+    save_booking,
+)
 
 
 # ---------------------------------------------------------------------------- #
@@ -84,6 +93,76 @@ def match_area_option(option_texts: list[str], procedure: str) -> int | None:
     return None
 
 
+# Month names as shown in the calendar header (e.g. "octubre 2026")
+SPANISH_MONTHS = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
+
+
+def parse_calendar_header(text: str) -> tuple[int, int] | None:
+    """Return (year, month) from a calendar header like "octubre 2026", or None."""
+    words = normalize_text(text).split()
+    if len(words) != 2 or words[0] not in SPANISH_MONTHS or not words[1].isdigit():
+        return None
+    return int(words[1]), SPANISH_MONTHS[words[0]]
+
+
+def candidate_dates(available: list[date], date_ranges: list[DateRange]) -> list[date]:
+    """
+    Return the dates worth trying, earliest first: all the available ones, or
+    only the user's preferred ones when they gave any.
+    """
+    if date_ranges:
+        preferred = {date_range.date for date_range in date_ranges}
+        available = [day for day in available if day in preferred]
+    return sorted(available)
+
+
+def pick_time(
+    slots: list[time], day: date, date_ranges: list[DateRange]
+) -> time | None:
+    """
+    Return the earliest slot that falls in one of the user's time windows for
+    that day (both ends included), or the earliest slot when they gave no
+    dates. None if nothing fits.
+    """
+    if date_ranges:
+        windows = [
+            (date_range.start_time, date_range.end_time)
+            for date_range in date_ranges
+            if date_range.date == day
+        ]
+        slots = [
+            slot for slot in slots if any(start <= slot <= end for start, end in windows)
+        ]
+    return min(slots, default=None)
+
+
+async def wait_for_time_slots(page, day: date, timeout=10) -> bool:
+    """Wait until the time slots panel shows the given day (it loads via AJAX)."""
+    expected = day.strftime("%d/%m/%Y")
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        title = await page.query_selector("div[id='formcita:horasJefatura'] .titulo")
+        if title and expected in title.text_all:
+            return True
+        await asyncio.sleep(0.5)
+    return False
+
+
 async def wait_random_time(min_seconds, max_seconds):
     # Non-blocking so the web UI stays responsive while a check runs
     await asyncio.sleep(random.uniform(min_seconds, max_seconds))
@@ -150,7 +229,17 @@ async def save_screenshot(page, step: str):
 # ---------------------------------------------------------------------------- #
 #                                Main Functions                                #
 # ---------------------------------------------------------------------------- #
-async def office_availability_checker(browser, office_id: str, procedure: str):
+async def office_availability_checker(
+    browser, office_id: int, settings: Settings, booking: Booking | None
+) -> Booking | None:
+    """
+    Book the earliest slot at the office that fits the user's date ranges and
+    return it, or None if there is none. With an existing booking, only dates
+    before it are considered.
+    """
+
+    procedure = settings.procedure
+    date_ranges = settings.date_ranges
 
     log.info(f"🔍 Checking availability for office {office_id}...")
 
@@ -176,7 +265,7 @@ async def office_availability_checker(browser, office_id: str, procedure: str):
 
     if not office_select:
         log.error("❌ No office select field found")
-        return False
+        return None
 
     await wait_random_time(1, 3)
 
@@ -198,7 +287,7 @@ async def office_availability_checker(browser, office_id: str, procedure: str):
 
     if not option_to_select:
         log.error("❌ No option found with value '{office_id}'")
-        return False
+        return None
 
     # Get the office name and save it to a variable
     log.debug("🔍 Getting the office name...")
@@ -227,7 +316,7 @@ async def office_availability_checker(browser, office_id: str, procedure: str):
 
     if complete_text:
         log.error("❌ The schedule for this office is complete")
-        return False
+        return None
 
     log.info("✅ There might be availability for this office")
 
@@ -245,7 +334,7 @@ async def office_availability_checker(browser, office_id: str, procedure: str):
 
     if not area_select:
         log.error("❌ No area select field found")
-        return False
+        return None
 
     await wait_random_time(1, 3)
 
@@ -270,7 +359,7 @@ async def office_availability_checker(browser, office_id: str, procedure: str):
         log.error(
             f"❌ No area option matches the procedure '{procedure}' (options: {option_texts}), exiting..."
         )
-        return False
+        return None
 
     log.debug("🖱️ Selecting the option...")
     await all_options[option_index].select_option()
@@ -311,7 +400,7 @@ async def office_availability_checker(browser, office_id: str, procedure: str):
     presence_link = await page.select("a[title='Presencial']")
     if not presence_link:
         log.error("❌ No <a> element with the attribute title='Presencial' found")
-        return False
+        return None
 
     # TODO: Check if there are multiple <a> elements with the attribute title="Presencial" and select the one that relates to "Tramites de vehículos"
 
@@ -354,17 +443,209 @@ async def office_availability_checker(browser, office_id: str, procedure: str):
         log.error(
             "❌ This office is currently without capacity to schedule an appointment"
         )
-        return False
+        return None
 
     log.info("✅ This office is currently with capacity to schedule an appointment")
 
-    # Comment the following line if you want to continue with the booking process
-    return True
+    await wait_random_time(1, 3)
+
+    # -------------------------------- Select date ------------------------------- #
+    log.info("🔍 Selecting the date...")
+
+    # The calendar opens on the first month with availability, so the month
+    # selector is ignored: only the dates of the month shown are considered
+    log.debug("🔍 Looking for the calendar header...")
+    header = await page.select("div.cite-calendario-cabecera > div")
+    if not header:
+        log.error("❌ No calendar header found")
+        return None
+
+    year_month = parse_calendar_header(header.text_all)
+    if not year_month:
+        log.error(f"❌ Could not parse the calendar month '{header.text_all.strip()}'")
+        return None
+    year, month = year_month
+
+    # Available days are submit inputs whose value is the day number; the rest are plain text.
+    # Keep their IDs rather than the elements, as clicking a day re-renders the calendar
+    log.debug("🔍 Looking for the available days...")
+    day_buttons = await page.select_all(
+        "div.cite-calendario-dias input[type='submit']:not([disabled])"
+    )
+    day_button_ids = {
+        date(year, month, int(button.attrs.get("value"))): button.attrs.get("id")
+        for button in day_buttons
+    }
+    log.info(
+        f"📅 Available dates: {[day.isoformat() for day in sorted(day_button_ids)]}"
+    )
+
+    days_to_try = candidate_dates(list(day_button_ids), date_ranges)
+    if not days_to_try:
+        log.error("❌ None of the available dates matches your preferred dates")
+        return None
+
+    if booking:
+        days_to_try = [day for day in days_to_try if day < booking.date]
+        if not days_to_try:
+            log.info(
+                f"⏭️ No available date before the booked one ({booking.date.isoformat()})"
+            )
+            return None
+
+    # A preferred day may have no slot in the user's time windows, so try each in turn
+    for day in days_to_try:
+        log.info(f"🔍 Selecting the date {day.isoformat()}...")
+
+        day_button = await page.select(f"input[id='{day_button_ids[day]}']")
+        if not day_button:
+            log.error(f"❌ No button found for the date {day.isoformat()}")
+            return None
+
+        await wait_random_time(1, 3)
+
+        # Clicking a day loads its time slots via AJAX
+        log.debug(f"🖱️ Clicking the date {day.isoformat()}...")
+        await day_button.click()
+
+        log.debug("🌐 Waiting for the time slots to load...")
+        if not await wait_for_time_slots(page, day):
+            log.error(f"❌ The time slots for {day.isoformat()} did not load")
+            return None
+
+        log.info(f"✅ Selected date: {day.isoformat()}")
+
+        await wait_random_time(1, 3)
+
+        # Save a screenshot on debug mode
+        await save_debug_screenshot(page, "date_selected")
+
+        # -------------------------------- Select time ------------------------------- #
+        log.info("🔍 Selecting the time...")
+
+        log.debug("🔍 Looking for the available times...")
+        time_buttons = await page.select_all(
+            "div[id='formcita:horasJefatura'] div.cite-horas input[type='submit']:not([disabled])"
+        )
+        time_buttons_by_slot = {
+            time.fromisoformat(button.attrs.get("value")): button
+            for button in time_buttons
+        }
+        log.info(
+            f"🕐 Available times: {[slot.strftime('%H:%M') for slot in sorted(time_buttons_by_slot)]}"
+        )
+
+        slot = pick_time(list(time_buttons_by_slot), day, date_ranges)
+        if slot is None:
+            log.info(
+                f"⏭️ No available time on {day.isoformat()} fits your time windows"
+            )
+            continue
+
+        if booking:
+            # TODO: Cancel the booked appointment in a new tab, then book this one
+            log.info(
+                f"🎯 Found an earlier appointment on {day.isoformat()} at {slot.strftime('%H:%M')}, "
+                "but replacing the booked one is not implemented yet"
+            )
+            return None
+
+        await wait_random_time(1, 3)
+
+        log.debug(f"🖱️ Clicking the time {slot.strftime('%H:%M')}...")
+        await time_buttons_by_slot[slot].click()
+
+        log.info(f"✅ Selected time: {slot.strftime('%H:%M')}")
+
+        await wait_random_time(1, 3)
+
+        # Save a screenshot on debug mode
+        await save_debug_screenshot(page, "time_selected")
+        break
+    else:
+        log.error("❌ None of the available times matches your preferred time windows")
+        return None
+
+    # ------------------------- Fill in the applicant data ------------------------ #
+    log.info("🔍 Filling in the applicant data...")
+
+    # Picking a time loads the applicant form as a new page
+    log.debug("🌐 Waiting for the applicant form to load...")
+    first_name_input = await page.select("input[id='formulario:nombre']", timeout=20)
+    if not first_name_input:
+        log.error("❌ The applicant form did not load")
+        return None
+
+    await wait_until_page_is_ready(page, complete=True)
+
+    # The second surname and phone are optional and left empty: the whole last
+    # name goes in the first surname field. Typing into the next field blurs the
+    # NIF, which fires its onchange AJAX validation.
+    fields = [
+        ("formulario:nombre", settings.first_name),
+        ("formulario:apellido1", settings.last_name),
+        ("formulario:nif", settings.dni),
+        ("formulario:email", settings.email),
+    ]
+    for field_id, value in fields:
+        log.debug(f"🔍 Looking for the field '{field_id}'...")
+        field = await page.select(f"input[id='{field_id}']")
+        if not field:
+            log.error(f"❌ No field '{field_id}' found")
+            return None
+
+        await wait_random_time(1, 3)
+
+        log.debug(f"⌨️ Typing into the field '{field_id}'...")
+        await field.scroll_into_view()
+        await field.clear_input()
+        await field.send_keys(value)
+
+    log.info("✅ Applicant data filled in")
+
+    await wait_random_time(1, 3)
+
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "applicant_data_filled")
+
+    # ------------------------------ Request the cita ----------------------------- #
+    log.info("🔍 Requesting the appointment...")
+
+    log.debug("🔍 Looking for the 'Solicitar cita' button...")
+    submit_button = await page.select("button[id='formulario:enviarFormulario']")
+    if not submit_button:
+        log.error("❌ No 'Solicitar cita' button found")
+        return None
+
+    await wait_random_time(1, 3)
+
+    log.debug("🖱️ Clicking the 'Solicitar cita' button...")
+    await submit_button.scroll_into_view()
+    await submit_button.click()
+
+    await wait_random_time(3, 5)
+
+    # Save a screenshot on debug mode
+    await save_debug_screenshot(page, "appointment_requested")
+
+    # TODO: Check the confirmation page to make sure the appointment was booked
+    log.info(
+        f"🎉 Booked an appointment on {day.isoformat()} at {slot.strftime('%H:%M')}"
+    )
+    return Booking(
+        office_id=office_id, date=day, time=slot, booked_at=datetime.now().astimezone()
+    )
 
 
-async def dgt_availability_checker(officeIds: list[int], procedure: str) -> list[int]:
-    """Check each office and return the IDs of the ones with availability."""
-    available = []
+async def dgt_availability_checker(
+    settings: Settings, booking: Booking | None = None
+) -> Booking | None:
+    """
+    Check the configured offices in order and book the first slot that fits
+    the user's date ranges (any slot when there are none), or that is earlier
+    than the current booking. Return the new booking, or None.
+    """
+    new_booking = None
 
     log.info("🚀 Starting browser...")
     browser = await uc.start(
@@ -373,24 +654,32 @@ async def dgt_availability_checker(officeIds: list[int], procedure: str) -> list
     )
 
     try:
-        for office in officeIds:
+        for office in settings.office_ids:
             log.info(f"\n{'='*50}")
-            if await office_availability_checker(browser, office, procedure):
-                available.append(office)
+            new_booking = await office_availability_checker(
+                browser, office, settings, booking
+            )
             log.info(f"{'='*50}\n")
+            # Only one appointment can be held at a time
+            if new_booking:
+                break
     finally:
         log.info("🛑 Closing browser...")
         browser.stop()
 
-    return available
+    return new_booking
 
 
 async def main():
-    # Madrid - 536
+    # Uses the settings saved from the web UI
+    settings = load_settings()
+    if not settings:
+        log.error("❌ No saved settings found, configure the bot in the web UI first")
+        return
 
-    offices = [543]
-
-    await dgt_availability_checker(offices, "matriculacion")
+    booking = await dgt_availability_checker(settings, load_booking())
+    if booking:
+        save_booking(booking)
 
 
 if __name__ == "__main__":

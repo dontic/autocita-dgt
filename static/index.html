@@ -250,7 +250,7 @@
         <div class="stats">
           <div><span>Last check:</span> <strong id="last-check">—</strong></div>
           <div><span>Next check:</span> <strong id="next-check">—</strong></div>
-          <div><span>Available:</span> <strong id="last-available">—</strong></div>
+          <div><span>Booked:</span> <strong id="booking">—</strong></div>
         </div>
         <pre id="logs" class="logs"></pre>
       </section>
@@ -444,8 +444,9 @@
         $("next-check").textContent = status.running
           ? status.next_check_at ? formatTime(status.next_check_at) : "checking now…"
           : "—";
-        $("last-available").textContent = status.last_available.length
-          ? status.last_available.map((o) => o.name).join(", ")
+        const booking = status.booking;
+        $("booking").textContent = booking
+          ? `${booking.date} ${booking.time.slice(0, 5)} · ${booking.office_name}`
           : "—";
 
         const logs = $("logs");

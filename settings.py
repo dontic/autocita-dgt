@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import date, time
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Literal
 
@@ -12,6 +12,8 @@ from offices import OFFICES
 SETTINGS_FILE = Path("data/settings.json")
 # Whether the user left the bot running, so it can resume after a server restart
 SESSION_FILE = Path("data/session.json")
+# The appointment the bot booked, so it only looks for earlier ones afterwards
+BOOKING_FILE = Path("data/booking.json")
 
 DNI_NIE_REGEX = re.compile(r"^[XYZ]?\d{7,8}[A-Z]$")
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -29,6 +31,15 @@ class DateRange(BaseModel):
         if self.start_time >= self.end_time:
             raise ValueError("start time must be before end time")
         return self
+
+
+class Booking(BaseModel):
+    """An appointment the bot booked on the DGT site."""
+
+    office_id: int
+    date: date
+    time: time
+    booked_at: datetime
 
 
 class Settings(BaseModel):
@@ -96,3 +107,17 @@ def load_session_active() -> bool:
 def save_session_active(active: bool):
     SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
     SESSION_FILE.write_text(json.dumps({"active": active}))
+
+
+def load_booking() -> Booking | None:
+    if not BOOKING_FILE.exists():
+        return None
+    return Booking.model_validate_json(BOOKING_FILE.read_text())
+
+
+def save_booking(booking: Booking | None):
+    if booking is None:
+        BOOKING_FILE.unlink(missing_ok=True)
+        return
+    BOOKING_FILE.parent.mkdir(parents=True, exist_ok=True)
+    BOOKING_FILE.write_text(booking.model_dump_json(indent=2))
