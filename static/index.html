@@ -102,6 +102,24 @@
       .chip { background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 13px; }
       .chip button { border: none; background: none; padding: 0 6px; color: var(--muted); }
 
+      .options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      @media (max-width: 560px) { .options { grid-template-columns: 1fr; } }
+      .options label {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        font-weight: 400;
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .options label:has(input:checked) { border-color: var(--accent); }
+      .options input { accent-color: var(--accent); margin-top: 4px; }
+      .options strong { display: block; font-size: 14px; }
+      .options small { color: var(--muted); font-size: 13px; }
+
       .slider-row { display: flex; align-items: center; gap: 14px; }
       .slider-row input { flex: 1; accent-color: var(--accent); }
       .slider-value { min-width: 70px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -151,6 +169,27 @@
             <input type="search" id="office-filter" placeholder="Filter offices…" />
             <div id="office-chips" class="chips"></div>
             <div id="office-list" class="office-list"></div>
+          </section>
+
+          <section>
+            <h2>Procedure</h2>
+            <p class="hint">What the appointment is for. Area names vary between offices, so the closest one is picked.</p>
+            <div class="options">
+              <label>
+                <input type="radio" name="procedure" value="matriculacion" checked />
+                <span>
+                  <strong>Matriculación</strong>
+                  <small>Vehicle registration. Falls back to Vehículos, then Trámites generales, if the office has no Matriculación area.</small>
+                </span>
+              </label>
+              <label>
+                <input type="radio" name="procedure" value="vehiculos" />
+                <span>
+                  <strong>Vehículos</strong>
+                  <small>General vehicle procedures. Falls back to Trámites generales if the office has no Vehículos area.</small>
+                </span>
+              </label>
+            </div>
           </section>
 
           <section>
@@ -307,6 +346,7 @@
       function collectSettings() {
         return {
           office_ids: [...selectedOffices],
+          procedure: document.querySelector("input[name='procedure']:checked").value,
           check_period_minutes: Number($("check-period").value),
           first_name: $("first-name").value,
           last_name: $("last-name").value,
@@ -337,6 +377,7 @@
       function applySettings(settings) {
         if (!settings) return;
         settings.office_ids.forEach((id) => selectedOffices.add(id));
+        document.querySelector(`input[name='procedure'][value='${settings.procedure}']`).checked = true;
         $("check-period").value = settings.check_period_minutes;
         $("first-name").value = settings.first_name;
         $("last-name").value = settings.last_name;

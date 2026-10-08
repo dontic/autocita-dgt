@@ -2,6 +2,7 @@ import json
 import re
 from datetime import date, time
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -32,6 +33,8 @@ class DateRange(BaseModel):
 
 class Settings(BaseModel):
     office_ids: list[int] = Field(min_length=1)
+    # What the appointment is for; decides which area is selected at each office
+    procedure: Literal["matriculacion", "vehiculos"] = "matriculacion"
     check_period_minutes: int = Field(ge=5, le=60)
     first_name: str = Field(min_length=1)
     last_name: str = Field(min_length=1)

@@ -75,6 +75,7 @@ class BotRunner:
 
         log.info("🚀 Starting DGT availability checker")
         log.info(f"📋 Offices to check: {settings.office_ids}")
+        log.info(f"🚗 Procedure: {settings.procedure}")
         log.info(f"⏱️  Check period: {settings.check_period_minutes} minutes")
 
         while True:
@@ -83,7 +84,7 @@ class BotRunner:
                 start_time = time.time()
                 log.info("🔄 Running availability check...")
                 self.last_available = await dgt_availability_checker(
-                    settings.office_ids
+                    settings.office_ids, settings.procedure
                 )
                 elapsed_time = time.time() - start_time
                 log.info(

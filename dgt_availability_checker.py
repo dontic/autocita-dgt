@@ -1,9 +1,11 @@
 from datetime import datetime
+from difflib import SequenceMatcher
 import asyncio
 import nodriver as uc
 import random
 import sys
 import os
+import unicodedata
 import logging
 from dotenv import load_dotenv
 
@@ -30,6 +32,58 @@ log.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 # ---------------------------------------------------------------------------- #
 #                                     Utils                                    #
 # ---------------------------------------------------------------------------- #
+# Area option names to look for, in order of preference, for each procedure.
+# A matriculación can also be booked with a generic vehículos appointment when
+# the office has no specific matriculación area, and "Trámites generales" is
+# the last resort for offices without a vehicles area.
+AREA_TARGETS = {
+    "matriculacion": ["matriculacion", "vehiculos", "generales"],
+    "vehiculos": ["vehiculos", "generales"],
+}
+
+# Minimum similarity between a word of the option and the target to count as a match
+AREA_MATCH_THRESHOLD = 0.8
+
+
+def normalize_text(text: str) -> str:
+    """Lowercase and strip accents so "Matriculación" matches "matriculacion"."""
+    text = unicodedata.normalize("NFKD", text.strip().lower())
+    return "".join(char for char in text if not unicodedata.combining(char))
+
+
+def similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def match_area_option(option_texts: list[str], procedure: str) -> int | None:
+    """
+    Return the index of the area option that best fits the procedure, or None.
+
+    Each target is tried in order. An option matches a target when one of its
+    words is similar enough to it (so "Matriculación de Vehículos" matches
+    "matriculacion"); among the matches, the one whose whole text is closest to
+    the target wins (so "Vehículos" beats "Matriculación de Vehículos" for
+    "vehiculos").
+    """
+    normalized = [normalize_text(text) for text in option_texts]
+
+    for target in AREA_TARGETS[procedure]:
+        best_index, best_score = None, None
+        for index, text in enumerate(normalized):
+            word_score = max(
+                (similarity(word, target) for word in text.split()), default=0
+            )
+            if word_score < AREA_MATCH_THRESHOLD:
+                continue
+            score = (word_score, similarity(text, target))
+            if best_score is None or score > best_score:
+                best_index, best_score = index, score
+        if best_index is not None:
+            return best_index
+
+    return None
+
+
 async def wait_random_time(min_seconds, max_seconds):
     # Non-blocking so the web UI stays responsive while a check runs
     await asyncio.sleep(random.uniform(min_seconds, max_seconds))
@@ -96,7 +150,7 @@ async def save_screenshot(page, step: str):
 # ---------------------------------------------------------------------------- #
 #                                Main Functions                                #
 # ---------------------------------------------------------------------------- #
-async def office_availability_checker(browser, office_id: str):
+async def office_availability_checker(browser, office_id: str, procedure: str):
 
     log.info(f"🔍 Checking availability for office {office_id}...")
 
@@ -116,9 +170,9 @@ async def office_availability_checker(browser, office_id: str):
     # ------------------------------- Select office ------------------------------ #
     log.info("🔍 Selecting the office...")
 
-    # Find the select element with id "formselectorCentro:j_id_2h"
+    # Find the select element with id "formselectorCentro:j_id_2i"
     log.debug("🔍 Finding the office select field...")
-    office_select = await page.select("select[id='formselectorCentro:j_id_2h']")
+    office_select = await page.select("select[id='formselectorCentro:j_id_2i']")
 
     if not office_select:
         log.error("❌ No office select field found")
@@ -160,48 +214,8 @@ async def office_availability_checker(browser, office_id: str):
 
     await wait_random_time(1, 3)
 
-    # ------------------------------ Select tramite ------------------------------ #
-    log.info("🔍 Selecting the tramite...")
-
-    # Select "Tipo de tramite"
-    log.debug("🔍 Looking for the tramite select field...")
-    tramite_select = await page.select(
-        "select[id='formselectorCentro:idTipoTramiteSelector']"
-    )
-
-    # Sometimes there is no tramite select field, and it goes directly to the area select
-    if tramite_select:
-
-        await wait_random_time(1, 3)
-
-        # Focus on the select field
-        log.debug("🖱️ Focusing on the tramite select field...")
-        await tramite_select.focus()
-
-        # Get all the options under the tramite select field
-        log.debug("🔍 Getting all the options under the tramite select field...")
-        all_options = await tramite_select.query_selector_all("option")
-
-        await wait_random_time(1, 3)
-
-        log.debug("🔍 Looking for the option that contains the text 'oficina'...")
-        for option in all_options:
-            option_text = option.text
-            if "oficina" in option_text.lower():
-                log.debug("🖱️ Selecting the option...")
-                await option.select_option()
-                log.info(f"✅ Selected tramite: {option_text}")
-                break
-
-    else:
-        log.warning(
-            "⚠️ No tramite select field found, it might be because I need to select the area directly"
-        )
-
-    await wait_random_time(1, 3)
-
     # Save a screenshot on debug mode
-    await save_debug_screenshot(page, "tramite_selected")
+    await save_debug_screenshot(page, "office_selected")
 
     # --------------------- Check for schedule complete alert -------------------- #
     log.info("🔍 Checking if the schedule for this office is complete...")
@@ -247,52 +261,20 @@ async def office_availability_checker(browser, office_id: str):
 
     await wait_random_time(1, 3)
 
-    # Look for the option that contains the text "matriculación"
-    # If there is no text "matriculación", look for the text "vehículos"
-    # If there is no text vehiculos, exit
+    # The area names differ between offices, so pick the closest one to the procedure
+    option_texts = [option.text for option in all_options]
+    log.debug(f"🔍 Area options found: {option_texts}")
+    option_index = match_area_option(option_texts, procedure)
 
-    option_found = False
-
-    for option in all_options:
-        option_text = option.text
-        if "matriculación" in option_text.lower():
-            log.debug("🖱️ Selecting the option...")
-            await option.select_option()
-            option_found = True
-            log.info(f"✅ Selected area: {option_text}")
-            break
-
-    if not option_found:
-        log.debug(
-            "⚠️ No option found with the text 'matriculación', looking for 'vehículos'..."
-        )
-        for option in all_options:
-            option_text = option.text
-            if "vehículos" in option_text.lower():
-                log.debug("🖱️ Selecting the option...")
-                await option.select_option()
-                option_found = True
-                log.info(f"✅ Selected area: {option_text}")
-                break
-
-    if not option_found:
-        log.debug(
-            "⚠️ No option found with the text 'matriculación' or 'vehículos', looking for 'Tramites generales'..."
-        )
-        for option in all_options:
-            option_text = option.text
-            if "generales" in option_text.lower():
-                log.debug("🖱️ Selecting the option...")
-                await option.select_option()
-                option_found = True
-                log.info(f"✅ Selected area: {option_text}")
-                break
-
-    if not option_found:
+    if option_index is None:
         log.error(
-            "❌ No area option found with the text 'matriculación', 'vehículos' or 'Tramites generales', exiting..."
+            f"❌ No area option matches the procedure '{procedure}' (options: {option_texts}), exiting..."
         )
         return False
+
+    log.debug("🖱️ Selecting the option...")
+    await all_options[option_index].select_option()
+    log.info(f"✅ Selected area: {option_texts[option_index]}")
 
     await wait_random_time(1, 3)
 
@@ -304,7 +286,7 @@ async def office_availability_checker(browser, office_id: str):
 
     # Find the button with id "formselectorCentro:j_id_2x"
     log.debug("🔍 Looking for the continue button...")
-    button = await page.find("button[id='formselectorCentro:j_id_2x']")
+    button = await page.find("button[id='formselectorCentro:j_id_2t']")
 
     await wait_random_time(1, 3)
 
@@ -383,7 +365,7 @@ async def office_availability_checker(browser, office_id: str):
     return True
 
 
-async def dgt_availability_checker(officeIds: list[int]) -> list[int]:
+async def dgt_availability_checker(officeIds: list[int], procedure: str) -> list[int]:
     """Check each office and return the IDs of the ones with availability."""
     available = []
 
@@ -396,7 +378,7 @@ async def dgt_availability_checker(officeIds: list[int]) -> list[int]:
     try:
         for office in officeIds:
             log.info(f"\n{'='*50}")
-            if await office_availability_checker(browser, office):
+            if await office_availability_checker(browser, office, procedure):
                 available.append(office)
             log.info(f"{'='*50}\n")
     finally:
@@ -411,7 +393,7 @@ async def main():
 
     offices = [543]
 
-    await dgt_availability_checker(offices)
+    await dgt_availability_checker(offices, "matriculacion")
 
 
 if __name__ == "__main__":
