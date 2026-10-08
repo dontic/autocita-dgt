@@ -358,9 +358,6 @@ async def office_availability_checker(browser, office_id: str, procedure: str):
 
     log.info("✅ This office is currently with capacity to schedule an appointment")
 
-    # Take a screenshot of the page
-    await save_screenshot(page, "availability_checked")
-
     # Comment the following line if you want to continue with the booking process
     return True
 
