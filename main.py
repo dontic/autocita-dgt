@@ -1,83 +1,97 @@
-import os
-import sys
-import time
-import logging
-import nodriver as uc
-from dotenv import load_dotenv
-import requests
+import asyncio
+from contextlib import asynccontextmanager
+from pathlib import Path
 
-from dgt_availability_checker import dgt_availability_checker
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
-load_dotenv()
+from bot import BotRunner
+from dgt_availability_checker import log
+from offices import OFFICES
+from settings import (
+    Settings,
+    load_session_active,
+    load_settings,
+    save_session_active,
+    save_settings,
+)
 
-log = logging.getLogger(__name__)
+HOST = "0.0.0.0"
+PORT = 8000
+STATIC_DIR = Path(__file__).parent / "static"
+
+bot = BotRunner()
 
 
-def get_office_ids():
-    """Get the office IDs from environment variable."""
-    office_ids = os.getenv("OFFICE_IDS")
-    if not office_ids:
-        log.error("❌ OFFICE_IDS environment variable is not set")
-        sys.exit(1)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    resume_session()
+    yield
+    # Make sure the browser is closed when the server shuts down. The session
+    # flag is left untouched so the bot resumes on the next start.
+    await bot.stop()
+
+
+def resume_session():
+    """Restart the bot if it was running when the server last went down."""
+    if not load_session_active():
+        return
     try:
-        return [int(id.strip()) for id in office_ids.split(",")]
-    except ValueError:
-        log.error(f"❌ OFFICE_IDS must be comma-separated integers, got: {office_ids}")
-        sys.exit(1)
+        settings = load_settings()
+    except Exception as e:
+        log.error(f"❌ Could not resume the previous session, invalid settings: {e}")
+        save_session_active(False)
+        return
+    if not settings:
+        save_session_active(False)
+        return
+    log.info("♻️ Resuming the previous session")
+    bot.start(settings)
 
 
-def get_check_period_minutes():
-    """Get the check period from environment variable."""
-    period = os.getenv("CHECK_PERIOD_MINUTES")
-    if not period:
-        log.error("❌ CHECK_PERIOD_MINUTES environment variable is not set")
-        sys.exit(1)
-    try:
-        return int(period)
-    except ValueError:
-        log.error(f"❌ CHECK_PERIOD_MINUTES must be a valid integer, got: {period}")
-        sys.exit(1)
+app = FastAPI(title="AutoCita DGT", lifespan=lifespan)
 
 
-async def run_checker():
-    """Run the availability checker in a loop."""
-    office_ids = get_office_ids()
-    check_period_minutes = get_check_period_minutes()
-    check_period_seconds = check_period_minutes * 60
+@app.get("/", include_in_schema=False)
+async def index():
+    return FileResponse(STATIC_DIR / "index.html")
 
-    log.info("🚀 Starting DGT availability checker")
-    log.info(f"📋 Offices to check: {office_ids}")
-    log.info(f"⏱️  Check period: {check_period_minutes} minutes")
 
-    # Send a NTFY message to test the connection
-    log.info("🔍 Sending NTFY message to test the connection...")
-    requests.post(
-        f"{os.getenv('NTFY_URL')}/{os.getenv('NTFY_TOPIC')}",
-        data="Initializing DGT availability checker",
-        headers={
-            "Title": "Initializing DGT availability checker",
-            "Priority": "default",
-            "Tags": "dgt,info",
-            "Authorization": f"Bearer {os.getenv('NTFY_TOKEN')}",
-        },
-    )
-    log.info("✅ NTFY message sent")
+@app.get("/api/offices")
+async def get_offices():
+    return [
+        {"id": office_id, "name": name}
+        for office_id, name in sorted(OFFICES.items(), key=lambda item: item[1])
+    ]
 
-    while True:
-        try:
-            start_time = time.time()
-            log.info("🔄 Running availability check...")
-            await dgt_availability_checker(office_ids)
-            elapsed_time = time.time() - start_time
-            log.info(
-                f"✅ Check completed in {elapsed_time:.2f} seconds. Next check in {check_period_minutes} minutes."
-            )
-        except Exception as e:
-            log.error(f"❌ Error during check: {e}")
-            log.info(f"⏳ Retrying in {check_period_minutes} minutes...")
 
-        time.sleep(check_period_seconds)
+@app.get("/api/settings")
+async def get_settings() -> Settings | None:
+    return load_settings()
+
+
+@app.get("/api/status")
+async def get_status():
+    return bot.status()
+
+
+@app.post("/api/start")
+async def start(settings: Settings):
+    if bot.running:
+        raise HTTPException(status_code=409, detail="The bot is already running")
+    save_settings(settings)
+    save_session_active(True)
+    bot.start(settings)
+    return bot.status()
+
+
+@app.post("/api/stop")
+async def stop():
+    save_session_active(False)
+    await bot.stop()
+    return bot.status()
 
 
 if __name__ == "__main__":
-    uc.loop().run_until_complete(run_checker())
+    asyncio.run(uvicorn.Server(uvicorn.Config(app, host=HOST, port=PORT)).serve())

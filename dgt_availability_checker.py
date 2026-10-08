@@ -1,9 +1,8 @@
 from datetime import datetime
-import time
+import asyncio
 import nodriver as uc
 import random
 import sys
-import requests
 import os
 import logging
 from dotenv import load_dotenv
@@ -27,20 +26,13 @@ logging.basicConfig(
 log = logging.getLogger("autocita-dgt")
 log.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 
-NTFY_URL = os.getenv("NTFY_URL")
-NTFY_TOPIC = os.getenv("NTFY_TOPIC")
-NTFY_TOKEN = os.getenv("NTFY_TOKEN")
-
-if not NTFY_URL or not NTFY_TOPIC or not NTFY_TOKEN:
-    log.error("❌ NTFY_URL, NTFY_TOPIC or NTFY_TOKEN is not set")
-    sys.exit(1)
-
 
 # ---------------------------------------------------------------------------- #
 #                                     Utils                                    #
 # ---------------------------------------------------------------------------- #
-def wait_random_time(min_seconds, max_seconds):
-    time.sleep(random.uniform(min_seconds, max_seconds))
+async def wait_random_time(min_seconds, max_seconds):
+    # Non-blocking so the web UI stays responsive while a check runs
+    await asyncio.sleep(random.uniform(min_seconds, max_seconds))
 
 
 async def wait_until_page_is_ready(page, complete=True):
@@ -119,7 +111,7 @@ async def office_availability_checker(browser, office_id: str):
     log.debug("🌐 Waiting for the page to be ready...")
     await wait_until_page_is_ready(page, complete=True)
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # ------------------------------- Select office ------------------------------ #
     log.info("🔍 Selecting the office...")
@@ -132,19 +124,19 @@ async def office_availability_checker(browser, office_id: str):
         log.error("❌ No office select field found")
         return False
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Scroll into view
     log.debug("🖱️ Scrolling into view...")
     await office_select.scroll_into_view()
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Focus on the select field
     log.debug("🖱️ Focusing on the select field...")
     await office_select.focus()
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Get the option
     log.debug(f"🔍 Getting the option with value '{office_id}'...")
@@ -158,7 +150,7 @@ async def office_availability_checker(browser, office_id: str):
     log.debug("🔍 Getting the office name...")
     office_name = option_to_select.text
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Select that option
     log.debug("🖱️ Selecting the option...")
@@ -166,7 +158,7 @@ async def office_availability_checker(browser, office_id: str):
 
     log.info(f"✅ Selected office: {office_name}")
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # ------------------------------ Select tramite ------------------------------ #
     log.info("🔍 Selecting the tramite...")
@@ -180,7 +172,7 @@ async def office_availability_checker(browser, office_id: str):
     # Sometimes there is no tramite select field, and it goes directly to the area select
     if tramite_select:
 
-        wait_random_time(1, 3)
+        await wait_random_time(1, 3)
 
         # Focus on the select field
         log.debug("🖱️ Focusing on the tramite select field...")
@@ -190,7 +182,7 @@ async def office_availability_checker(browser, office_id: str):
         log.debug("🔍 Getting all the options under the tramite select field...")
         all_options = await tramite_select.query_selector_all("option")
 
-        wait_random_time(1, 3)
+        await wait_random_time(1, 3)
 
         log.debug("🔍 Looking for the option that contains the text 'oficina'...")
         for option in all_options:
@@ -206,7 +198,7 @@ async def office_availability_checker(browser, office_id: str):
             "⚠️ No tramite select field found, it might be because I need to select the area directly"
         )
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Save a screenshot on debug mode
     await save_debug_screenshot(page, "tramite_selected")
@@ -225,7 +217,7 @@ async def office_availability_checker(browser, office_id: str):
 
     log.info("✅ There might be availability for this office")
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Save a screenshot on debug mode
     await save_debug_screenshot(page, "schedule_complete_alert_checked")
@@ -241,19 +233,19 @@ async def office_availability_checker(browser, office_id: str):
         log.error("❌ No area select field found")
         return False
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Focus on the select field
     log.debug("🖱️ Focusing on the area select field...")
     await area_select.focus()
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Get all the options under the area select field
     log.debug("🔍 Getting all the options under the area select field...")
     all_options = await area_select.query_selector_all("option")
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Look for the option that contains the text "matriculación"
     # If there is no text "matriculación", look for the text "vehículos"
@@ -302,7 +294,7 @@ async def office_availability_checker(browser, office_id: str):
         )
         return False
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Save a screenshot on debug mode
     await save_debug_screenshot(page, "area_selected")
@@ -314,13 +306,13 @@ async def office_availability_checker(browser, office_id: str):
     log.debug("🔍 Looking for the continue button...")
     button = await page.find("button[id='formselectorCentro:j_id_2x']")
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Click the button
     log.debug("🖱️ Clicking the continue button...")
     await button.click()
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Wait for the page to be ready
     log.debug("🌐 Waiting for the page to be ready...")
@@ -341,13 +333,13 @@ async def office_availability_checker(browser, office_id: str):
 
     # TODO: Check if there are multiple <a> elements with the attribute title="Presencial" and select the one that relates to "Tramites de vehículos"
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Click the link
     log.debug("🖱️ Clicking the 'Pedir cita' link...")
     await presence_link.click()
 
-    wait_random_time(1, 3)
+    await wait_random_time(1, 3)
 
     # Wait for the page to be ready
     await wait_until_page_is_ready(page, complete=True)
@@ -385,59 +377,33 @@ async def office_availability_checker(browser, office_id: str):
     log.info("✅ This office is currently with capacity to schedule an appointment")
 
     # Take a screenshot of the page
-    screenshot_filename = await save_screenshot(page, "availability_checked")
-
-    # -------------------------- Send NTFY notification -------------------------- #
-    log.info("🔍 Sending NTFY notification...")
-
-    notification_text = (
-        f"{office_name} has availability, trying to book an appointment..."
-    )
-
-    requests.post(
-        f"{NTFY_URL}/{NTFY_TOPIC}",
-        data=notification_text.encode(encoding="utf-8"),
-        headers={
-            "Title": f"{office_name} has availability",
-            "Priority": "default",
-            "Tags": "calendar",
-            "Authorization": f"Bearer {NTFY_TOKEN}",
-        },
-    )
-
-    with open(f"{screenshot_filename}", "rb") as screenshot_file:
-        requests.put(
-            f"{NTFY_URL}/{NTFY_TOPIC}",
-            data=screenshot_file,
-            headers={
-                "Filename": "screenshot.png",
-                "Content-Type": "image/png",
-                "Authorization": f"Bearer {NTFY_TOKEN}",
-            },
-        )
-
-    log.info("✅ NTFY notification sent")
+    await save_screenshot(page, "availability_checked")
 
     # Comment the following line if you want to continue with the booking process
     return True
 
 
-async def dgt_availability_checker(officeIds: list[str]):
+async def dgt_availability_checker(officeIds: list[int]) -> list[int]:
+    """Check each office and return the IDs of the ones with availability."""
+    available = []
 
     log.info("🚀 Starting browser...")
     browser = await uc.start(
         headless=True,
-        no_sandbox=True,  # Run as root
+        sandbox=False,  # Required in containers (nodriver only auto-disables it for root)
     )
 
     try:
         for office in officeIds:
             log.info(f"\n{'='*50}")
-            await office_availability_checker(browser, office)
+            if await office_availability_checker(browser, office):
+                available.append(office)
             log.info(f"{'='*50}\n")
     finally:
         log.info("🛑 Closing browser...")
         browser.stop()
+
+    return available
 
 
 async def main():

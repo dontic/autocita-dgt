@@ -28,6 +28,12 @@ RUN uv sync --locked --no-dev --no-install-project --no-cache
 # Copy application code
 COPY . .
 
+# Web UI
+EXPOSE 8000
+
+# Persisted settings
+VOLUME ["/app/data"]
+
 # Run main.py
 CMD ["python", "main.py"]
 

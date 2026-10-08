@@ -2,17 +2,28 @@
 
 This is a self hosted tool that checks the Spanish Traffic Agency (DGT) appointment site for free slots for licensing vehicles.
 
-When a free slot is found, a notification is sent to a NTFY server.
+It is managed from a small web UI where you pick the offices to check, how often to check them, the applicant details and, optionally, the preferred dates and time windows for the appointment.
 
 ## How to self host
 
 1. Copy the `docker-compose.yml` file in the root of this repository
 
-2. Change the environment variables.
+2. `docker compose up -d`
 
-3. `docker compose up -d`
+3. Open `http://<your-host>:8000`, fill in the settings and press **Start**.
 
 4. To stop the tool: `docker compose down`
+
+Settings are saved to `./data/`. If the bot was running when the container or server stopped, it resumes automatically on the next start. The web UI has no authentication, so only expose it on a trusted network.
+
+## Running locally
+
+```bash
+uv sync
+uv run python main.py   # then open http://localhost:8000
+```
+
+A local Chrome/Chromium install is required. Set `DEBUG=True` (in the environment or a `.env` file) to get debug logs and step-by-step screenshots.
 
 ## List of DGT offices and their IDs
 

@@ -70,3 +70,6 @@ browser_data/
 
 # Screenshots
 screenshots/
+
+# Persisted web UI settings
+data/
