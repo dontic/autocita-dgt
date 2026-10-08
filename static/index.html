@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoCita DGT</title>
+    <style>
+      :root {
+        --bg: #f5f6f4;
+        --surface: #ffffff;
+        --text: #1d2420;
+        --muted: #66706a;
+        --border: #d9ddd9;
+        --accent: #0c4b33;
+        --accent-text: #fbfbf6;
+        --danger: #b3261e;
+        --ok: #1e7a46;
+        --log-bg: #11161a;
+        --log-text: #d7dde1;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #121513;
+          --surface: #1b201d;
+          --text: #e6eae7;
+          --muted: #9aa49e;
+          --border: #2f3632;
+          --accent: #3fa97a;
+          --accent-text: #0d130f;
+          --danger: #f0726a;
+          --ok: #5cd08f;
+          --log-bg: #0b0e10;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+      h1 { font-size: 22px; margin: 0; }
+      h2 { font-size: 16px; margin: 0 0 4px; }
+      .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+      section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 18px;
+        margin-bottom: 16px;
+      }
+      label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+      input[type="text"], input[type="email"], input[type="search"], input[type="date"], input[type="time"] {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+      }
+      input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+      button {
+        font: inherit;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        padding: 7px 14px;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; padding: 10px 28px; }
+      button.danger { background: var(--danger); color: #fff; border-color: var(--danger); font-weight: 600; padding: 10px 28px; }
+      button.link { border: none; background: none; color: var(--danger); padding: 4px 8px; }
+
+      .office-list {
+        max-height: 260px;
+        overflow-y: auto;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        margin-top: 8px;
+      }
+      .office-list label {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-weight: 400;
+        font-size: 14px;
+        padding: 6px 10px;
+        margin: 0;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+      }
+      .office-list label:last-child { border-bottom: none; }
+      .office-list .id { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 4px; }
+      .chip { background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 13px; }
+      .chip button { border: none; background: none; padding: 0 6px; color: var(--muted); }
+
+      .options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      @media (max-width: 560px) { .options { grid-template-columns: 1fr; } }
+      .options label {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        font-weight: 400;
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .options label:has(input:checked) { border-color: var(--accent); }
+      .options input { accent-color: var(--accent); margin-top: 4px; }
+      .options strong { display: block; font-size: 14px; }
+      .options small { color: var(--muted); font-size: 13px; }
+
+      .slider-row { display: flex; align-items: center; gap: 14px; }
+      .slider-row input { flex: 1; accent-color: var(--accent); }
+      .slider-value { min-width: 70px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+      table { width: 100%; border-collapse: collapse; }
+      th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 600; padding: 0 6px 6px; }
+      td { padding: 4px 6px; }
+      td:last-child { width: 1%; }
+      .empty { color: var(--muted); font-size: 14px; padding: 10px 6px; }
+
+      .actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+      .error { color: var(--danger); font-size: 14px; white-space: pre-line; }
+      .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); }
+      .badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+      .badge.on { color: var(--ok); }
+      .badge.on::before { background: var(--ok); }
+      .stats { display: flex; gap: 24px; flex-wrap: wrap; font-size: 14px; margin-bottom: 10px; }
+      .stats span { color: var(--muted); }
+      pre.logs {
+        background: var(--log-bg);
+        color: var(--log-text);
+        border-radius: 6px;
+        padding: 12px;
+        margin: 0;
+        height: 280px;
+        overflow: auto;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      fieldset { border: none; padding: 0; margin: 0; }
+      fieldset:disabled { opacity: 0.6; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>AutoCita DGT</h1>
+        <span id="status-badge" class="badge">Stopped</span>
+      </header>
+
+      <form id="settings-form" novalidate>
+        <fieldset id="settings-fieldset">
+          <section>
+            <h2>Offices</h2>
+            <p class="hint">Select one or more DGT offices to check.</p>
+            <input type="search" id="office-filter" placeholder="Filter offices…" />
+            <div id="office-chips" class="chips"></div>
+            <div id="office-list" class="office-list"></div>
+          </section>
+
+          <section>
+            <h2>Procedure</h2>
+            <p class="hint">What the appointment is for. Area names vary between offices, so the closest one is picked.</p>
+            <div class="options">
+              <label>
+                <input type="radio" name="procedure" value="matriculacion" checked />
+                <span>
+                  <strong>Matriculación</strong>
+                  <small>Vehicle registration. Falls back to Vehículos, then Trámites generales, if the office has no Matriculación area.</small>
+                </span>
+              </label>
+              <label>
+                <input type="radio" name="procedure" value="vehiculos" />
+                <span>
+                  <strong>Vehículos</strong>
+                  <small>General vehicle procedures. Falls back to Trámites generales if the office has no Vehículos area.</small>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section>
+            <h2>Check period</h2>
+            <p class="hint">How often the bot checks the selected offices.</p>
+            <div class="slider-row">
+              <input type="range" id="check-period" min="5" max="60" step="5" value="10" />
+              <span id="check-period-value" class="slider-value">10 min</span>
+            </div>
+          </section>
+
+          <section>
+            <h2>Applicant</h2>
+            <p class="hint">Details used to fill in the appointment form.</p>
+            <div class="grid">
+              <div>
+                <label for="first-name">First name</label>
+                <input type="text" id="first-name" autocomplete="given-name" />
+              </div>
+              <div>
+                <label for="last-name">Last name</label>
+                <input type="text" id="last-name" autocomplete="family-name" />
+              </div>
+              <div>
+                <label for="dni">DNI / NIE</label>
+                <input type="text" id="dni" placeholder="12345678A" />
+              </div>
+              <div>
+                <label for="email">Email</label>
+                <input type="email" id="email" autocomplete="email" />
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2>Preferred dates <span class="hint">(optional)</span></h2>
+            <p class="hint">Only book within these windows. Leave empty to take the first available appointment.</p>
+            <table>
+              <thead>
+                <tr><th>Date</th><th>From</th><th>To</th><th></th></tr>
+              </thead>
+              <tbody id="date-rows"></tbody>
+            </table>
+            <div id="date-empty" class="empty">No preferred dates — the first available appointment will be used.</div>
+            <button type="button" id="add-date">+ Add date</button>
+          </section>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit" id="start-btn" class="primary">Start</button>
+          <button type="button" id="stop-btn" class="danger" hidden>Stop</button>
+          <span id="form-error" class="error"></span>
+        </div>
+      </form>
+
+      <section style="margin-top: 16px">
+        <h2>Activity</h2>
+        <div class="stats">
+          <div><span>Last check:</span> <strong id="last-check">—</strong></div>
+          <div><span>Next check:</span> <strong id="next-check">—</strong></div>
+          <div>
+            <span>Booked:</span> <strong id="booking">—</strong>
+            <button type="button" id="forget-booking-btn" class="link" hidden>Forget</button>
+          </div>
+        </div>
+        <pre id="logs" class="logs"></pre>
+      </section>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const selectedOffices = new Set();
+      let offices = [];
+
+      // ------------------------------- Offices ------------------------------- //
+      function renderOffices() {
+        const filter = $("office-filter").value.trim().toLowerCase();
+        const list = $("office-list");
+        list.replaceChildren();
+        for (const office of offices) {
+          if (filter && !`${office.name} ${office.id}`.toLowerCase().includes(filter)) continue;
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = selectedOffices.has(office.id);
+          checkbox.addEventListener("change", () => {
+            checkbox.checked ? selectedOffices.add(office.id) : selectedOffices.delete(office.id);
+            renderChips();
+          });
+          const name = document.createElement("span");
+          name.textContent = office.name;
+          const id = document.createElement("span");
+          id.className = "id";
+          id.textContent = office.id;
+          label.append(checkbox, name, id);
+          list.append(label);
+        }
+      }
+
+      function renderChips() {
+        const chips = $("office-chips");
+        chips.replaceChildren();
+        for (const office of offices.filter((o) => selectedOffices.has(o.id))) {
+          const chip = document.createElement("span");
+          chip.className = "chip";
+          chip.textContent = office.name;
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.textContent = "×";
+          remove.title = "Remove";
+          remove.addEventListener("click", () => {
+            selectedOffices.delete(office.id);
+            renderChips();
+            renderOffices();
+          });
+          chip.append(remove);
+          chips.append(chip);
+        }
+      }
+
+      $("office-filter").addEventListener("input", renderOffices);
+
+      // ---------------------------- Check period ----------------------------- //
+      function renderPeriod() {
+        const minutes = Number($("check-period").value);
+        $("check-period-value").textContent = minutes === 60 ? "1 hour" : `${minutes} min`;
+      }
+      $("check-period").addEventListener("input", renderPeriod);
+
+      // ---------------------------- Date ranges ------------------------------ //
+      function addDateRow(range = {}) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td><input type="date" class="d-date" required></td>
+          <td><input type="time" class="d-start" required></td>
+          <td><input type="time" class="d-end" required></td>
+          <td><button type="button" class="link" title="Remove">✕</button></td>`;
+        row.querySelector(".d-date").value = range.date || "";
+        row.querySelector(".d-date").min = new Date().toISOString().slice(0, 10);
+        row.querySelector(".d-start").value = (range.start_time || "08:00").slice(0, 5);
+        row.querySelector(".d-end").value = (range.end_time || "14:00").slice(0, 5);
+        row.querySelector("button").addEventListener("click", () => {
+          row.remove();
+          renderDateEmpty();
+        });
+        $("date-rows").append(row);
+        renderDateEmpty();
+      }
+
+      function renderDateEmpty() {
+        $("date-empty").hidden = $("date-rows").children.length > 0;
+      }
+
+      $("add-date").addEventListener("click", () => addDateRow());
+
+      // ------------------------------ Settings ------------------------------- //
+      function collectSettings() {
+        return {
+          office_ids: [...selectedOffices],
+          procedure: document.querySelector("input[name='procedure']:checked").value,
+          check_period_minutes: Number($("check-period").value),
+          first_name: $("first-name").value,
+          last_name: $("last-name").value,
+          dni: $("dni").value,
+          email: $("email").value,
+          date_ranges: [...$("date-rows").children].map((row) => ({
+            date: row.querySelector(".d-date").value,
+            start_time: row.querySelector(".d-start").value,
+            end_time: row.querySelector(".d-end").value,
+          })),
+        };
+      }
+
+      function validate(settings) {
+        const errors = [];
+        if (!settings.office_ids.length) errors.push("Select at least one office.");
+        if (!settings.first_name.trim()) errors.push("First name is required.");
+        if (!settings.last_name.trim()) errors.push("Last name is required.");
+        if (!/^[XYZ]?\d{7,8}[A-Z]$/i.test(settings.dni.trim())) errors.push("Enter a valid DNI or NIE.");
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(settings.email.trim())) errors.push("Enter a valid email.");
+        settings.date_ranges.forEach((r, i) => {
+          if (!r.date || !r.start_time || !r.end_time) errors.push(`Preferred date row ${i + 1} is incomplete.`);
+          else if (r.start_time >= r.end_time) errors.push(`Preferred date row ${i + 1}: "From" must be before "To".`);
+        });
+        return errors;
+      }
+
+      function applySettings(settings) {
+        if (!settings) return;
+        settings.office_ids.forEach((id) => selectedOffices.add(id));
+        document.querySelector(`input[name='procedure'][value='${settings.procedure}']`).checked = true;
+        $("check-period").value = settings.check_period_minutes;
+        $("first-name").value = settings.first_name;
+        $("last-name").value = settings.last_name;
+        $("dni").value = settings.dni;
+        $("email").value = settings.email;
+        settings.date_ranges.forEach(addDateRow);
+      }
+
+      function formatApiError(body) {
+        if (Array.isArray(body?.detail)) {
+          return body.detail.map((e) => `${e.loc.slice(1).join(" › ")}: ${e.msg}`).join("\n");
+        }
+        return body?.detail || "Something went wrong.";
+      }
+
+      $("settings-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const settings = collectSettings();
+        const errors = validate(settings);
+        $("form-error").textContent = errors.join("\n");
+        if (errors.length) return;
+
+        $("start-btn").disabled = true;
+        try {
+          const response = await fetch("/api/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(settings),
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            $("form-error").textContent = formatApiError(body);
+          } else {
+            renderStatus(body);
+          }
+        } catch (error) {
+          $("form-error").textContent = `Could not reach the server: ${error.message}`;
+        } finally {
+          $("start-btn").disabled = false;
+        }
+      });
+
+      $("stop-btn").addEventListener("click", async () => {
+        $("stop-btn").disabled = true;
+        try {
+          const response = await fetch("/api/stop", { method: "POST" });
+          renderStatus(await response.json());
+        } finally {
+          $("stop-btn").disabled = false;
+        }
+      });
+
+      $("forget-booking-btn").addEventListener("click", async () => {
+        const confirmed = confirm(
+          "Forget the booked appointment? It is NOT cancelled on the DGT site, " +
+            "and the bot will book a new one on its next run."
+        );
+        if (!confirmed) return;
+        $("forget-booking-btn").disabled = true;
+        try {
+          const response = await fetch("/api/booking", { method: "DELETE" });
+          const body = await response.json();
+          if (!response.ok) {
+            alert(body.detail);
+            return;
+          }
+          renderStatus(body);
+        } finally {
+          $("forget-booking-btn").disabled = false;
+        }
+      });
+
+      // ------------------------------- Status -------------------------------- //
+      const formatTime = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
+
+      function renderStatus(status) {
+        const badge = $("status-badge");
+        badge.textContent = status.running ? "Running" : "Stopped";
+        badge.classList.toggle("on", status.running);
+        $("settings-fieldset").disabled = status.running;
+        $("start-btn").hidden = status.running;
+        $("stop-btn").hidden = !status.running;
+        $("last-check").textContent = formatTime(status.last_check_at);
+        $("next-check").textContent = status.running
+          ? status.next_check_at ? formatTime(status.next_check_at) : "checking now…"
+          : "—";
+        const booking = status.booking;
+        $("booking").textContent = booking
+          ? `${booking.date} ${booking.time.slice(0, 5)} · ${booking.office_name}`
+          : "—";
+        $("forget-booking-btn").hidden = !booking || status.running;
+
+        const logs = $("logs");
+        const atBottom = logs.scrollHeight - logs.scrollTop - logs.clientHeight < 20;
+        logs.textContent = status.logs.join("\n");
+        if (atBottom) logs.scrollTop = logs.scrollHeight;
+      }
+
+      async function pollStatus() {
+        try {
+          const response = await fetch("/api/status");
+          renderStatus(await response.json());
+        } catch {
+          // Server unreachable; try again on the next tick
+        }
+      }
+
+      // -------------------------------- Init --------------------------------- //
+      (async () => {
+        offices = await (await fetch("/api/offices")).json();
+        applySettings(await (await fetch("/api/settings")).json());
+        renderOffices();
+        renderChips();
+        renderPeriod();
+        renderDateEmpty();
+        await pollStatus();
+        setInterval(pollStatus, 3000);
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+.venv/
+.git/
+.env
+__pycache__/
+screenshots/
+data/
+.github/
+.devcontainer/
+.vscode/
+.env.*
+CLAUDE.md
