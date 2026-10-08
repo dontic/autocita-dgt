@@ -135,6 +135,13 @@ class BotRunner:
             )
             await asyncio.sleep(check_period_seconds)
 
+    def forget_booking(self):
+        """Drop the saved booking so the next run books from scratch."""
+        if self.running:
+            raise RuntimeError("Stop the bot before forgetting the booking")
+        self._set_booking(None)
+        log.info("🗑️ Booked appointment forgotten")
+
     def _set_booking(self, booking: Booking | None):
         self.booking = booking
         save_booking(booking)

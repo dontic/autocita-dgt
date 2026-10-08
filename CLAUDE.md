@@ -29,7 +29,7 @@ Running requires a local Chrome/Chromium install (nodriver launches it). Set `DE
 
 ## Architecture
 
-- `main.py` — entry point. FastAPI app served by uvicorn: `GET /` (the UI), `GET /api/offices`, `GET /api/settings`, `GET /api/status`, `POST /api/start` (validates + saves settings, starts the bot), `POST /api/stop`.
+- `main.py` — entry point. FastAPI app served by uvicorn: `GET /` (the UI), `GET /api/offices`, `GET /api/settings`, `GET /api/status`, `POST /api/start` (validates + saves settings, starts the bot), `POST /api/stop`, `DELETE /api/booking` (forget the saved booking; 409 while running).
 - `bot.py` — `BotRunner` runs the check loop, holds the current booking (persisted to `data/booking.json`, forgotten once its date passes) and stops itself — clearing the session flag — when `is_booking_final` says the booking can't be improved. The loop runs as an asyncio task in the same event loop as the web server (start/stop = create/cancel the task). It attaches an in-memory log handler to the `autocita-dgt` logger so `/api/status` can return recent log lines. Sessions survive restarts: `/api/start` and `/api/stop` write `data/session.json` (`{"active": bool}`), and the FastAPI lifespan calls `resume_session()` on boot to restart the bot from the saved settings. Server shutdown stops the bot but deliberately leaves the flag set.
 - `settings.py` — `Settings` / `DateRange` models and JSON persistence. `offices.py` — office ID → name map shown in the UI.
 - `static/index.html` — the whole UI: a single page with vanilla JS, no build step. It polls `/api/status` every 3s.

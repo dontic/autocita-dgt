@@ -86,6 +86,16 @@ async def start(settings: Settings):
     return bot.status()
 
 
+@app.delete("/api/booking")
+async def forget_booking():
+    if bot.running:
+        raise HTTPException(
+            status_code=409, detail="Stop the bot before forgetting the booking"
+        )
+    bot.forget_booking()
+    return bot.status()
+
+
 @app.post("/api/stop")
 async def stop():
     save_session_active(False)

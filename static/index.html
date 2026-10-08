@@ -250,7 +250,10 @@
         <div class="stats">
           <div><span>Last check:</span> <strong id="last-check">—</strong></div>
           <div><span>Next check:</span> <strong id="next-check">—</strong></div>
-          <div><span>Booked:</span> <strong id="booking">—</strong></div>
+          <div>
+            <span>Booked:</span> <strong id="booking">—</strong>
+            <button type="button" id="forget-booking-btn" class="link" hidden>Forget</button>
+          </div>
         </div>
         <pre id="logs" class="logs"></pre>
       </section>
@@ -430,6 +433,26 @@
         }
       });
 
+      $("forget-booking-btn").addEventListener("click", async () => {
+        const confirmed = confirm(
+          "Forget the booked appointment? It is NOT cancelled on the DGT site, " +
+            "and the bot will book a new one on its next run."
+        );
+        if (!confirmed) return;
+        $("forget-booking-btn").disabled = true;
+        try {
+          const response = await fetch("/api/booking", { method: "DELETE" });
+          const body = await response.json();
+          if (!response.ok) {
+            alert(body.detail);
+            return;
+          }
+          renderStatus(body);
+        } finally {
+          $("forget-booking-btn").disabled = false;
+        }
+      });
+
       // ------------------------------- Status -------------------------------- //
       const formatTime = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
 
@@ -448,6 +471,7 @@
         $("booking").textContent = booking
           ? `${booking.date} ${booking.time.slice(0, 5)} · ${booking.office_name}`
           : "—";
+        $("forget-booking-btn").hidden = !booking || status.running;
 
         const logs = $("logs");
         const atBottom = logs.scrollHeight - logs.scrollTop - logs.clientHeight < 20;
