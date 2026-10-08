@@ -10,11 +10,15 @@ services:
       # Web UI. It has no authentication, so don't expose it to the internet.
       - "8000:8000"
     volumes:
-      # Settings entered in the web UI are saved here
+      # Settings, the running/stopped session flag and the current booking are saved here
       - ./data:/app/data
     environment:
       # DEBUG: Set to True to enable debug logs and step-by-step screenshots.
       - DEBUG=False
+
+    # Run an init process as PID 1 so the Chrome processes started on every
+    # check are reaped instead of piling up as zombies.
+    init: true
 
     # Automatically restart the container unless explicitly stopped.
     restart: unless-stopped

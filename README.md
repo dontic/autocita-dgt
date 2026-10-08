@@ -14,7 +14,7 @@ It is managed from a small web UI where you pick the offices to check, how often
 
 4. To stop the tool: `docker compose down`
 
-Settings are saved to `./data/`. If the bot was running when the container or server stopped, it resumes automatically on the next start. The web UI has no authentication, so only expose it on a trusted network.
+Settings, the session state and the current booking are saved to `./data/`. If the bot was running when the container or server stopped, it resumes automatically on the next start. The web UI has no authentication, so only expose it on a trusted network.
 
 ## Running locally
 
