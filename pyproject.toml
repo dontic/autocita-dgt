@@ -1,0 +1,14 @@
+[project]
+name = "autocita-dgt"
+version = "0.1.0"
+description = "Self-hosted bot that checks DGT offices for free vehicle-registration appointments and sends NTFY notifications"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "nodriver",
+    "python-dotenv",
+    "requests",
+]
+
+[tool.uv]
+package = false
