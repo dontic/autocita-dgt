@@ -115,9 +115,11 @@ class BotRunner:
                 start_time = time.time()
                 log.info("🔄 Running availability check...")
                 new_booking = await dgt_availability_checker(settings, self.booking)
-                if new_booking:
+                if new_booking != self.booking:
                     self._set_booking(new_booking)
-                    if is_booking_final(new_booking, settings, date.today()):
+                    if new_booking and is_booking_final(
+                        new_booking, settings, date.today()
+                    ):
                         log.info("🏁 The booked appointment is the best possible one")
                         self._finish()
                         return

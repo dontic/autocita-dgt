@@ -163,6 +163,20 @@ async def wait_for_time_slots(page, day: date, timeout=10) -> bool:
     return False
 
 
+class BookingCancelledError(Exception):
+    """The booked appointment was cancelled but the earlier one could not be booked."""
+
+
+async def get_error_messages(page) -> list[str]:
+    """Return the messages of the red error alerts shown on the page."""
+    return await page.evaluate(
+        """
+        Array.from(document.querySelectorAll('div.alert.alert-danger li'))
+            .map((item) => item.textContent.trim())
+        """
+    )
+
+
 async def wait_random_time(min_seconds, max_seconds):
     # Non-blocking so the web UI stays responsive while a check runs
     await asyncio.sleep(random.uniform(min_seconds, max_seconds))
@@ -543,12 +557,9 @@ async def office_availability_checker(
             continue
 
         if booking:
-            # TODO: Cancel the booked appointment in a new tab, then book this one
             log.info(
-                f"🎯 Found an earlier appointment on {day.isoformat()} at {slot.strftime('%H:%M')}, "
-                "but replacing the booked one is not implemented yet"
+                f"🎯 Found an earlier appointment on {day.isoformat()} at {slot.strftime('%H:%M')}"
             )
-            return None
 
         await wait_random_time(1, 3)
 
@@ -610,7 +621,56 @@ async def office_availability_checker(
 
     # ------------------------------ Request the cita ----------------------------- #
     log.info("🔍 Requesting the appointment...")
+    errors = await submit_appointment_request(page)
+    if errors is None:
+        return None
 
+    # DGT only allows one pending appointment, so the booked one has to be
+    # cancelled before the earlier one can be confirmed
+    if errors and booking and any("cita pendiente" in error for error in errors):
+        log.info("🔁 The booked appointment has to be cancelled first")
+
+        if not await cancel_booking(browser, booking, settings.dni):
+            log.error("❌ Could not cancel the booked appointment, keeping it")
+            return None
+
+        # From here on the user has no appointment until the new one is confirmed
+        try:
+            log.info("🔙 Back to the first tab to confirm the new appointment...")
+            await page.bring_to_front()
+
+            await wait_random_time(1, 3)
+
+            # Drop the previous error so it isn't mistaken for a new one
+            await page.evaluate(
+                "document.querySelectorAll('div.alert.alert-danger').forEach((alert) => alert.remove())"
+            )
+
+            errors = await submit_appointment_request(page)
+        except Exception as e:
+            raise BookingCancelledError(str(e)) from e
+        if errors is None:
+            raise BookingCancelledError("No 'Solicitar cita' button found")
+        if errors:
+            raise BookingCancelledError("; ".join(errors))
+
+    if errors:
+        log.error(f"❌ The appointment was not booked: {'; '.join(errors)}")
+        return None
+
+    log.info(
+        f"🎉 Booked an appointment on {day.isoformat()} at {slot.strftime('%H:%M')}"
+    )
+    return Booking(
+        office_id=office_id, date=day, time=slot, booked_at=datetime.now().astimezone()
+    )
+
+
+async def submit_appointment_request(page) -> list[str] | None:
+    """
+    Click "Solicitar cita" and return the error messages it produced (empty
+    when the confirmation message is shown), or None if the button is missing.
+    """
     log.debug("🔍 Looking for the 'Solicitar cita' button...")
     submit_button = await page.select("button[id='formulario:enviarFormulario']")
     if not submit_button:
@@ -624,28 +684,214 @@ async def office_availability_checker(
     await submit_button.click()
 
     await wait_random_time(3, 5)
+    await wait_until_page_is_ready(page, complete=True)
+
+    # The response arrives via AJAX, so wait for either the confirmation or an error
+    log.debug("🔍 Waiting for the confirmation message...")
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 15
+    while True:
+        confirmed = await page.evaluate(
+            """
+            Array.from(document.querySelectorAll("section[id='formulario:mensajes'] div.alert li"))
+                .some((item) => item.textContent.includes('tu cita ha sido solicitada'))
+            """
+        )
+        errors = await get_error_messages(page)
+        if confirmed or errors or loop.time() > deadline:
+            break
+        await asyncio.sleep(0.5)
 
     # Save a screenshot on debug mode
     await save_debug_screenshot(page, "appointment_requested")
 
-    # TODO: Check the confirmation page to make sure the appointment was booked
-    log.info(
-        f"🎉 Booked an appointment on {day.isoformat()} at {slot.strftime('%H:%M')}"
-    )
-    return Booking(
-        office_id=office_id, date=day, time=slot, booked_at=datetime.now().astimezone()
-    )
+    if errors:
+        log.debug(f"🔍 Errors shown: {errors}")
+        return errors
+    if not confirmed:
+        return ["No confirmation message was shown"]
+    log.debug("✅ Confirmation message shown")
+    return []
 
+
+async def cancel_booking(browser, booking: Booking, dni: str) -> bool:
+    """Cancel the booked appointment from "Tus citas" in a new tab."""
+    booking_date = booking.date.strftime("%d/%m/%Y")
+    booking_time = booking.time.strftime("%H:%M")
+    log.info(f"🗑️ Cancelling the appointment on {booking_date} at {booking_time}...")
+
+    log.info("🌐 Opening the entry URL in a new tab...")
+    tab = await browser.get(
+        "https://sedeclave.dgt.gob.es/WEB_CITE_CONSULTA/paginas/inicio.faces",
+        new_tab=True,
+    )
+    try:
+        await wait_until_page_is_ready(tab, complete=True)
+
+        await wait_random_time(1, 3)
+
+        # ------------------------- Look up the appointment ------------------------ #
+        log.info("🔍 Looking up the booked appointment...")
+
+        # The page also has the booking form's office select, so scope to forminicio
+        log.debug("🔍 Finding the office select field...")
+        office_select = await tab.select("select[id='forminicio:idCentro']")
+        if not office_select:
+            log.error("❌ No office select field found")
+            return False
+
+        await office_select.scroll_into_view()
+        await office_select.focus()
+
+        await wait_random_time(1, 3)
+
+        option_to_select = await tab.select(
+            f"select[id='forminicio:idCentro'] option[value='{booking.office_id}']"
+        )
+        if not option_to_select:
+            log.error(f"❌ No option found with value '{booking.office_id}'")
+            return False
+
+        log.debug("🖱️ Selecting the office...")
+        await option_to_select.select_option()
+
+        await wait_random_time(1, 3)
+
+        # Set the value directly: typing would open the date picker and fight the input mask
+        log.debug("⌨️ Filling in the appointment date...")
+        date_set = await tab.evaluate(
+            f"""
+            (() => {{
+                const input = document.getElementById('forminicio:calendarInput');
+                if (!input) return false;
+                input.value = '{booking_date}';
+                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                return true;
+            }})()
+            """
+        )
+        if not date_set:
+            log.error("❌ No appointment date field found")
+            return False
+
+        await wait_random_time(1, 3)
+
+        log.debug("🔍 Finding the DNI field...")
+        dni_input = await tab.select("input[id='forminicio:doi']")
+        if not dni_input:
+            log.error("❌ No DNI field found")
+            return False
+
+        log.debug("⌨️ Typing the DNI...")
+        await dni_input.clear_input()
+        await dni_input.send_keys(dni)
+
+        await wait_random_time(1, 3)
+
+        # Save a screenshot on debug mode
+        await save_debug_screenshot(tab, "cancel_lookup_filled")
+
+        log.debug("🔍 Looking for the 'Buscar' button...")
+        search_button = await tab.select(
+            "form[id='forminicio'] input[type='submit'][value='Buscar']"
+        )
+        if not search_button:
+            log.error("❌ No 'Buscar' button found")
+            return False
+
+        log.debug("🖱️ Clicking the 'Buscar' button...")
+        await search_button.click()
+
+        await wait_random_time(2, 4)
+        await wait_until_page_is_ready(tab, complete=True)
+
+        # Save a screenshot on debug mode
+        await save_debug_screenshot(tab, "cancel_lookup_results")
+
+        # ---------------------------- Cancel the cita ---------------------------- #
+        log.info("🔍 Cancelling the appointment...")
+
+        # Make sure the appointment found is the booked one before cancelling it
+        log.debug("🔍 Checking the appointment found...")
+        appointment_found = await tab.evaluate(
+            f"""
+            (() => {{
+                const section = document.getElementById('seccionGlobal');
+                return !!section && section.textContent.includes('{booking_date}, {booking_time}');
+            }})()
+            """
+        )
+        if not appointment_found:
+            errors = await get_error_messages(tab)
+            log.error(
+                f"❌ The booked appointment was not found{f': {errors}' if errors else ''}"
+            )
+            return False
+
+        log.debug("🔍 Looking for the 'Anular cita' button...")
+        cancel_button = await tab.select(
+            "fieldset[id='seccionGlobal'] button[onclick*=\"PF('confirmation').show()\"]"
+        )
+        if not cancel_button:
+            log.error("❌ No 'Anular cita' button found")
+            return False
+
+        await wait_random_time(1, 3)
+
+        log.debug("🖱️ Clicking the 'Anular cita' button...")
+        await cancel_button.scroll_into_view()
+        await cancel_button.click()
+
+        await wait_random_time(1, 3)
+
+        # Only the opened confirm dialog has aria-hidden="false"
+        log.debug("🔍 Looking for the 'Aceptar' button of the confirmation dialog...")
+        accept_button = await tab.select(
+            "div.ui-confirm-dialog[aria-hidden='false'] input[type='submit'][value='Aceptar']"
+        )
+        if not accept_button:
+            log.error("❌ The cancellation confirmation dialog did not open")
+            return False
+
+        log.debug("🖱️ Clicking the 'Aceptar' button...")
+        await accept_button.click()
+
+        await wait_random_time(2, 4)
+        await wait_until_page_is_ready(tab, complete=True)
+
+        # Save a screenshot on debug mode
+        await save_debug_screenshot(tab, "appointment_cancelled")
+
+        cancelled = await tab.evaluate(
+            """
+            Array.from(document.querySelectorAll('div.alert li'))
+                .some((item) => item.textContent.includes('ha sido anulada'))
+            """
+        )
+        if not cancelled:
+            errors = await get_error_messages(tab)
+            log.error(
+                f"❌ The cancellation was not confirmed{f': {errors}' if errors else ''}"
+            )
+            return False
+
+        log.info(f"✅ Cancelled the appointment on {booking_date} at {booking_time}")
+        return True
+    finally:
+        log.debug("🗂️ Closing the cancellation tab...")
+        await tab.close()
 
 async def dgt_availability_checker(
     settings: Settings, booking: Booking | None = None
 ) -> Booking | None:
     """
     Check the configured offices in order and book the first slot that fits
-    the user's date ranges (any slot when there are none), or that is earlier
-    than the current booking. Return the new booking, or None.
+    the user's date ranges (any slot when there are none) and is earlier than
+    the current booking, replacing it. Return the booking the user holds
+    afterwards: the new one, the unchanged one, or None if it was cancelled
+    and nothing could be booked instead.
     """
-    new_booking = None
 
     log.info("🚀 Starting browser...")
     browser = await uc.start(
@@ -656,18 +902,25 @@ async def dgt_availability_checker(
     try:
         for office in settings.office_ids:
             log.info(f"\n{'='*50}")
-            new_booking = await office_availability_checker(
-                browser, office, settings, booking
-            )
+            try:
+                new_booking = await office_availability_checker(
+                    browser, office, settings, booking
+                )
+            except BookingCancelledError as e:
+                # The other offices can still give the user an appointment
+                log.error(
+                    f"❌ The booked appointment was cancelled but the new one could not be booked: {e}"
+                )
+                booking, new_booking = None, None
             log.info(f"{'='*50}\n")
             # Only one appointment can be held at a time
             if new_booking:
-                break
+                return new_booking
     finally:
         log.info("🛑 Closing browser...")
         browser.stop()
 
-    return new_booking
+    return booking
 
 
 async def main():
@@ -677,9 +930,10 @@ async def main():
         log.error("❌ No saved settings found, configure the bot in the web UI first")
         return
 
-    booking = await dgt_availability_checker(settings, load_booking())
-    if booking:
-        save_booking(booking)
+    booking = load_booking()
+    new_booking = await dgt_availability_checker(settings, booking)
+    if new_booking != booking:
+        save_booking(new_booking)
 
 
 if __name__ == "__main__":
